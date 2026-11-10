@@ -1,0 +1,5 @@
+#!/bin/sh
+# Last line of defence before anything reaches the public repo: scan every tracked file and the full history.
+set -e
+python3 scripts/check_leaks.py --all
+gitleaks git --redact --no-banner -c .gitleaks.toml

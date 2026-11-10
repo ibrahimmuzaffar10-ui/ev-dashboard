@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blocks the commit if anything sensitive is staged.
+set -e
+python3 scripts/check_leaks.py --staged
+gitleaks git --pre-commit --staged --redact --no-banner -c .gitleaks.toml

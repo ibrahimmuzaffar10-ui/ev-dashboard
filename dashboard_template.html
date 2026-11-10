@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emanant Visuals · Dashboard</title>
+<style>
+:root{
+  --bg:#f6f6f8;--panel:#fff;--fg:#1c1c1e;--mute:#6b6b73;--line:#e6e6ea;--soft:#f1f1f4;--acc:#6d4aff;
+  --g:#1e7b3a;--gb:#e3f5e8;--y:#8a6500;--yb:#fff4cc;--o:#a14a00;--ob:#ffe5cc;--r:#a8231a;--rb:#fde0dc;--n:#6b6b73;--nb:#eeeef1;
+  --radius:12px;--shadow:0 1px 2px rgba(0,0,0,.04),0 2px 8px rgba(0,0,0,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.page{max-width:1480px;margin:0 auto;padding:22px 24px 40px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
+h1{font-size:21px;font-weight:650;letter-spacing:-.01em;margin:0}
+.sub{color:var(--mute);margin-top:3px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);background:var(--panel);border:1px solid var(--line);padding:5px 10px;border-radius:999px}
+.dot{width:7px;height:7px;border-radius:50%;background:#2fb457}.dot.off{background:#b5b5bd}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:7px 12px;border-radius:9px;font:inherit;font-weight:550;cursor:pointer}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn:hover{filter:brightness(.97)}
+.kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line)}
+.kpi.kg::before{background:#2fb457}.kpi.ky::before{background:#e5b400}.kpi.ko::before{background:#f08a24}.kpi.kr::before{background:#e0483d}.kpi.ka::before{background:var(--acc)}
+.kpi.kg .v{color:var(--g)}.kpi.ky .v{color:var(--y)}.kpi.ko .v{color:var(--o)}.kpi.kr .v{color:var(--r)}
+.kpi .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .l{color:var(--mute);font-size:12px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:10px}
+.tabs button{border:0;background:transparent;color:var(--mute);padding:6px 12px;border-radius:8px;font:inherit;font-weight:550;cursor:pointer;white-space:nowrap}
+.tabs button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tabs .n{display:inline-block;min-width:18px;margin-left:5px;padding:0 5px;border-radius:9px;background:var(--line);font-size:11px;color:var(--fg);text-align:center}
+.spacer{flex:1}
+.toolbar input[type=search],.toolbar select{border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:9px;padding:7px 10px;font:inherit}
+.toolbar input[type=search]{width:220px}
+.count{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+.tablewrap{overflow:auto;max-height:calc(100vh - 290px);min-height:300px}
+table{border-collapse:separate;border-spacing:0;width:100%}
+th{position:sticky;top:0;z-index:2;background:#fafafb;color:var(--mute);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+th:hover{color:var(--fg)}
+td{padding:8px 10px;border-bottom:1px solid var(--soft);vertical-align:middle;white-space:nowrap}
+tbody tr:hover td{background:#fafaff}
+td.client{font-weight:600;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+td.client small{display:block;font-weight:400;color:var(--mute);font-size:11.5px}
+td.wrap{white-space:normal;min-width:230px;max-width:360px;color:#3a3a40}
+td.num{font-variant-numeric:tabular-nums;text-align:right}
+.muted{color:var(--mute)}
+/* status pills (read-only + select) */
+.pill,select.pill{display:inline-block;font:inherit;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;border:1px solid transparent;line-height:1.5}
+select.pill{appearance:none;-webkit-appearance:none;padding-right:22px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23666'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+button.pill{cursor:pointer;font:inherit;font-size:12px;font-weight:600}button.pill:hover{filter:brightness(.95)}
+select.pill:focus{outline:2px solid var(--acc);outline-offset:1px}
+.g{background-color:var(--gb);color:var(--g)}.y{background-color:var(--yb);color:var(--y)}.o{background-color:var(--ob);color:var(--o)}.r{background-color:var(--rb);color:var(--r)}.n{background-color:var(--nb);color:var(--n)}
+input.inline{border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:7px;width:100%}
+input.inline:hover{border-color:var(--line)}input.inline:focus{border-color:var(--acc);outline:none;background:#fff}
+input.date{width:128px}input.date.blank{color:#b5b5bd}input.money{width:84px;text-align:right;font-variant-numeric:tabular-nums}
+.note{cursor:text;border-radius:7px;padding:3px 6px;margin:-3px -6px;display:block;min-height:22px}
+.note:hover{background:var(--soft)}.note:focus{outline:2px solid var(--acc);background:#fff}
+.note.auto{color:var(--mute)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--mute);font-size:12px;margin:12px 2px 0}
+.legend .pill{margin-right:5px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:#1c1c1e;color:#fff;padding:8px 14px;border-radius:10px;font-weight:550;opacity:0;transition:.2s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.toast.err{background:#a8231a}
+dialog{border:0;border-radius:14px;padding:0;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog form{padding:20px}dialog h3{margin:0 0 14px;font-size:16px}
+dialog label{display:block;font-size:12px;color:var(--mute);margin:10px 0 4px}
+dialog input,dialog select,dialog textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit}
+dialog .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.empty{padding:40px;text-align:center;color:var(--mute)}
+.docs{position:relative}.docmenu{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:50;background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);padding:6px;min-width:250px}
+.docmenu.open{display:block}.docmenu .dh{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);padding:8px 10px 4px}
+.docmenu a,.docmenu button{display:block;width:100%;text-align:left;border:0;background:none;font:inherit;font-size:13px;color:inherit;text-decoration:none;padding:7px 10px;border-radius:7px;cursor:pointer}
+.docmenu a:hover,.docmenu button:hover{background:var(--line)}
+.views{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px;box-shadow:var(--shadow)}
+.views button{border:0;background:transparent;color:var(--mute);font:inherit;font-weight:600;padding:7px 16px;border-radius:8px;cursor:pointer}
+.views button.on{background:var(--acc);color:#fff}
+.faultbar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--mute);font-size:12px;align-items:center}
+.plan{font-size:12px;color:#3a3a40;line-height:1.6}.plan .done{color:var(--g);text-decoration:line-through}
+.plan .late{color:var(--r);font-weight:600}
+.linkbtn{border:0;background:none;color:var(--acc);font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:0}
+.kpi .v input{font:inherit;color:inherit;border:1px dashed transparent;background:transparent;width:120px;padding:0;border-radius:6px}
+.kpi .v input:hover{border-color:var(--line)}.kpi .v input:focus{outline:none;border-color:var(--acc)}
+.kpi .l small{display:block;color:#9a9aa2;font-size:11px}
+.bell{position:relative;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 11px;cursor:pointer;font:inherit;font-weight:600;box-shadow:var(--shadow)}
+.bell .cnt{position:absolute;top:-7px;right:-7px;background:#e0483d;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 5px}
+.bell .cnt.zero{display:none}
+.atype{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.plan .inst{cursor:pointer;border-radius:6px;padding:1px 4px;margin:0 -4px}.plan .inst:hover{background:var(--soft)}
+tr.done td{opacity:.55}
+table.mini{width:100%;border-collapse:collapse;margin-top:4px}table.mini th{position:static;font-size:11px;padding:4px;background:transparent}table.mini td{padding:2px;border:0}table.mini input{padding:6px 7px}
+.ctlink{font-size:11.5px;font-weight:600;color:var(--acc);cursor:pointer;border:0;background:none;padding:0;margin-top:2px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(4,1fr)}}
+</style></head>
+<body><div class="page">
+<header>
+  <div><h1>Emanant Visuals</h1><div class="sub" id="sub"></div></div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="bell" id="bell" title="Alerts">🔔 Alerts<span class="cnt zero" id="bellCnt">0</span></button>
+    <div class="views" id="views"><button data-v="pipe" class="on">Pipeline &amp; Bookings</button><button data-v="fin">Financials</button></div>
+    <a class="bell" href="/calendar" style="text-decoration:none;color:inherit">📅 Calendar</a>
+    <div class="docs"><button class="bell" id="docsBtn" title="Contract &amp; questionnaire">📄 Documents ▾</button>
+      <div class="docmenu" id="docMenu">
+        <div class="dh">Final templates</div>
+        <a href="/docs/EMANANT%20VISUALS%20-%20CONTRACT%20-%20VFinal.pdf" target="_blank">Contract (VFinal) · PDF</a>
+        <a href="/docs/EMANANT%20VISUALS%20-%20CONTRACT%20-%20VFinal.docx">Contract (VFinal) · Word</a>
+        <a href="/docs/EMANANT%20VISUALS%20-%20Client%20To-Do%20Questionnaire%20-%20VFinal.pdf" target="_blank">Questionnaire (VFinal) · PDF</a>
+        <a href="/docs/EMANANT%20VISUALS%20-%20Client%20To-Do%20Questionnaire%20-%20VFinal.docx">Questionnaire (VFinal) · Word</a>
+        <div class="dh">Open folder in Finder</div>
+        <button data-f="drafts">Contract Drafts</button><button data-f="signed">Signed Contracts</button><button data-f="questionnaires">Questionnaires</button><button data-f="contracts">Final templates</button>
+      </div></div>
+    <span class="badge" id="mode"></span>
+    <button class="btn primary" id="addBtn">+ Add lead</button>
+  </div>
+</header>
+<div class="kpis" id="kpis"></div>
+<div class="card">
+  <div class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <div class="spacer"></div>
+    <input type="search" id="q" placeholder="Search name, venue, notes…">
+    <select id="fs"><option value="">All statuses</option></select>
+    <select id="fv"><option value="">All services</option><option value="w">Weddings</option><option value="s">Smaller shoots</option></select>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="tablewrap"><table id="t"></table></div>
+</div>
+<div class="legend">
+  <span><span class="pill g">Green</span>booked · signed · paid · delivered</span>
+  <span><span class="pill y">Yellow</span>waiting on client</span>
+  <span><span class="pill o">Orange</span>we need to act</span>
+  <span><span class="pill r">Red</span>lost · ghosted · overdue</span>
+  <span><span class="pill n">Grey</span>unknown / not applicable</span>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+<dialog id="lostDlg"><form method="dialog" id="lostForm">
+  <h3>Why was this lead lost?</h3>
+  <div class="muted" id="lostWho" style="margin-bottom:6px"></div>
+  <label>Reason</label><select name="lost_reason"></select>
+  <label>Whose side?</label><select name="fault"></select>
+  <div class="actions"><button class="btn" value="cancel" formnovalidate>Skip</button><button class="btn primary" value="ok">Save reason</button></div>
+</form></dialog>
+<div id="briefOv" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(30,25,20,.55);backdrop-filter:blur(3px);overflow:auto">
+ <div style="max-width:720px;margin:6vh auto;background:var(--panel);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:26px 30px">
+  <div id="briefBody" style="font-size:14px;line-height:1.55"></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:18px"><button class="btn primary" id="briefOk">Got it, open dashboard</button></div>
+ </div></div>
+<dialog id="ctDlg" style="width:760px;max-height:92vh"><form method="dialog" id="ctForm" style="overflow:auto;max-height:86vh">
+  <h3>Create contract</h3>
+  <div class="muted" id="ctWho" style="margin-bottom:4px"></div>
+  <div class="muted" style="font-size:12px">Fills the final contract template. The draft is emailed to Eman to review, then she uploads it to DocuSeal. Sign-by date = 7 days from today.</div>
+  <div class="row"><div><label>Client name(s) on contract</label><input name="client_names" required></div><div><label>First names (for file name, e.g. Sara & Ali)</label><input name="first_names"></div></div>
+  <div class="row"><div><label>Phone</label><input name="client_phone"></div><div><label>Email</label><input name="client_email"></div></div>
+  <label>Mailing address</label><input name="client_address">
+  <div class="row"><div><label>Event / session type</label><input name="session_type" placeholder="Multi-day wedding (Mehndi + Nikkah)"></div><div><label>City, State (if outside Houston)</label><input name="city_state" placeholder="e.g. San Francisco, CA"></div></div>
+  <label>Location(s)</label><input name="locations">
+  <label>Day-of contact</label><input name="day_of_contact">
+  <label>Event days</label>
+  <table class="mini" id="ctDays"><tr><th>Event</th><th>Date</th><th>Start</th><th>End</th><th>Hours</th></tr></table>
+  <div class="row"><div><label>Package</label><input name="package_name"></div><div><label>Estimated images</label><input name="image_estimate"></div></div>
+  <div class="row"><div><label>Coverage hours (total)</label><input name="coverage_hours"></div><div><label>Photographers</label><input name="photographers" value="1"></div></div>
+  <label>Included</label><input name="inclusions" placeholder="Inspiration board, timeline coordination, engagement session…">
+  <div class="row"><div><label>Add-ons</label><input name="addons" value="None"></div><div><label>Privacy package</label><select name="privacy_option">__PRIVACY_OPTIONS__</select></div></div>
+  <label>Travel fee</label><input name="travel_fee" value="Included (Greater Houston)">
+  <div class="row"><div><label>TOTAL contract price ($)</label><input name="total" inputmode="decimal" required></div><div><label>Retainer due at signing ($)</label><input name="retainer" inputmode="decimal" required></div></div>
+  <label>Payment plan for the balance (up to 3)</label>
+  <table class="mini" id="ctPlan"><tr><th>Label</th><th>Amount ($)</th><th>Due date</th></tr></table>
+  <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Create &amp; email draft to Eman</button></div>
+</form></dialog>
+<dialog id="mailDlg" style="width:560px"><form method="dialog" id="mailForm">
+  <h3>Ask what it's about</h3>
+  <label>To</label><input name="to" readonly>
+  <label>Subject</label><input name="subject">
+  <label>Message (edit anything before sending)</label><textarea name="body" rows="11"></textarea>
+  <div class="muted" style="font-size:12px;margin-top:6px">Sends from Eman's email and saves a copy in her Sent folder. When they reply, it shows up here as an alert.</div>
+  <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Send email</button></div>
+</form></dialog>
+<dialog id="editInstDlg"><form method="dialog" id="eiForm">
+  <h3>Edit payment</h3><div class="muted" id="eiWho" style="margin-bottom:6px"></div>
+  <label>What is it?</label><input name="label">
+  <div class="row"><div><label>Amount ($)</label><input name="amount" inputmode="decimal"></div><div><label>Due date</label><input type="date" name="due"></div></div>
+  <label><input type="checkbox" name="paid" style="width:auto"> Received</label>
+  <div class="actions"><button class="btn" value="delete" formnovalidate style="margin-right:auto;color:#a8231a">Delete</button><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
+</form></dialog>
+<dialog id="instDlg"><form method="dialog" id="instForm">
+  <h3>Add a payment to the plan</h3>
+  <div class="muted" id="instWho" style="margin-bottom:6px"></div>
+  <label>What is it?</label><input name="label" placeholder="e.g. 50% of balance" required>
+  <div class="row"><div><label>Amount ($)</label><input name="amount" inputmode="decimal" required></div><div><label>Due date</label><input type="date" name="due"></div></div>
+  <label><input type="checkbox" name="paid" style="width:auto"> Already received</label>
+  <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Add payment</button></div>
+</form></dialog>
+<dialog id="dlg"><form method="dialog" id="addForm">
+  <h3>Add a lead</h3>
+  <label>Client name</label><input name="client" required>
+  <div class="row"><div><label>Channel</label><select name="channel"><option>Instagram</option><option>Email</option><option>Website form</option><option>Referral</option><option>Text / Phone</option><option>Planner / Vendor</option></select></div>
+  <div><label>Service</label><select name="service"></select></div></div>
+  <div class="row"><div><label>Inquiry date</label><input type="date" name="inquiry"></div><div><label>Event date</label><input type="date" name="event"></div></div>
+  <div class="row"><div><label>Status</label><select name="status"></select></div><div><label>Replied</label><select name="replied"><option value="no">No</option><option value="yes">Yes</option></select></div></div>
+  <label>Notes</label><textarea name="notes" rows="2"></textarea>
+  <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Add lead</button></div>
+</form></dialog>
+<script>
+const BOOT = __BOOT__;          // null = live (server), object = read-only snapshot
+const LIVE = BOOT === null;
+const OPT = {
+  status:   [['booked','Booked','g'],['completed','Completed','g'],['open','Open','y'],['unanswered','Unanswered','o'],['ghosted','Ghosted','r'],['lost','Lost','r']],
+  replied:  [['yes','Yes','g'],['no','No','o']],
+  contract: [['signed','Signed','g'],['sent','Sent','y'],['not_sent','Not sent','o'],['unknown','Unknown','n'],['n/a','N/A','n']],
+  retainer: [['paid','Paid','g'],['partial','Partially paid','y'],['unpaid','Unpaid','o'],['unknown','Unknown','n'],['n/a','N/A','n']],
+  balance:  [['paid_in_full','Paid in full','g'],['partial','Partially paid','y'],['due','Due','y'],['unknown','Unknown','n'],['n/a','N/A','n']],
+  gallery:  [['yes','Delivered','g'],['no','Pending','y'],['unknown','Unknown','n'],['n/a','N/A','n']],
+  review:   [['received','Received','g'],['requested','Requested','y'],['none','Not asked','n']],
+  lost_reason:[['went_with_other','Went with another photographer','n'],['price','Price / budget','n'],['client_ghosted','Client stopped replying','n'],['changed_plans','Plans changed / cancelled','n'],
+    ['date_conflict','Date conflict (already booked)','n'],['date_passed','Event date passed','n'],['travel','Eman traveling that date','n'],['no_reply_us','We replied too late / not at all','n'],
+    ['service_gap','Wanted something we don\'t offer (e.g. video)','n'],['other','Other','n'],['','— pick a reason —','n']],
+  fault:    [['ours','Our side','o'],['client','Client side','y'],['timing','No fault · bad timing','n'],['unknown','Not sure','n']],
+};
+const FAULT_OF={went_with_other:'client',price:'client',client_ghosted:'client',changed_plans:'client',date_conflict:'timing',date_passed:'timing',travel:'ours',no_reply_us:'ours',service_gap:'ours',other:'unknown'};
+const SERVICES=['wedding','multi_day_wedding','nikkah','walima','mehndi','engagement_couples','family','graduation','maternity','event_other','unknown'];
+const WED=new Set(['wedding','multi_day_wedding','nikkah','walima','mehndi']);
+const lab=(f,v)=>(OPT[f].find(o=>o[0]===v)||[v,v||'—','n'])[1];
+const col=(f,v)=>(OPT[f].find(o=>o[0]===v)||[0,0,'n'])[2];
+const svc=s=>(s||'unknown').replace(/_/g,' ').replace('engagement couples','engagement / couples').replace(/\b\w/g,c=>c.toUpperCase());
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=s=>{if(!s)return'';const d=new Date(s+'T12:00');return isNaN(d)?s:d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})};
+const money=v=>v==null||v===''?'':'$'+Number(v).toLocaleString();
+let DATA, TODAY, tab='action', view='pipe', sortKey=null, sortDir=1;
+const lastTab={pipe:'action',fin:'fin'};
+
+const nextInst=r=>(r.schedule||[]).map((x,i)=>({...x,i})).find(x=>!x.paid);
+const instLate=r=>{const n=nextInst(r);return !!(n&&n.due&&n.due<TODAY)};
+function overdue(r){return instLate(r)||(r.balance==='due'&&!r.schedule&&r.event&&r.event<TODAY)}
+const daysTo=d=>Math.round((new Date(d+'T12:00')-new Date(TODAY+'T12:00'))/864e5);
+function autoAction(r){
+  const a=[];
+  if(r.status==='unanswered') a.push('Reply to inquiry');
+  if(r.status==='open') a.push('Follow up');
+  if(r.status==='booked'){ if(r.contract!=='signed'&&r.contract!=='n/a')a.push('Get contract signed'); if(r.retainer!=='paid'&&r.retainer!=='n/a')a.push('Collect retainer'); const n=nextInst(r); if(n&&n.due&&daysTo(n.due)<=14)a.push((daysTo(n.due)<0?'OVERDUE: collect ':'Collect ')+money(n.amount)+' by '+fmt(n.due)); else if(overdue(r))a.push('Collect balance'); }
+  if(r.status==='completed'){ if(r.gallery!=='yes'&&r.gallery!=='n/a')a.push('Deliver / confirm gallery'); if(r.balance==='due'||r.balance==='unknown')a.push('Confirm balance paid'); if(r.gallery==='yes'&&r.review==='none')a.push('Ask for Google review'); }
+  return a.join(' · ');
+}
+const nextStep=r=>r.action_note||autoAction(r);
+const fresh=r=>(!r.event||r.event>=TODAY)&&(!r.inquiry||(new Date(TODAY)-new Date(r.inquiry))/864e5<=60);
+const needs=r=>!!r.action_note||(r.status==='unanswered'?fresh(r):(['open','booked','completed'].includes(r.status)&&!!autoAction(r)));
+
+const isWon=r=>['booked','completed'].includes(r.status);
+const balAmt=r=>r.total==null?null:Math.max(0,(r.total||0)-(r.paid||0));
+const yr=s=>(s||'').slice(0,4);
+function finKpis(){
+  const L=DATA.leads, F=DATA.finance||{}, W=L.filter(isWon);
+  const itemized=W.reduce((a,r)=>a+(r.paid||0),0);
+  const upcomingBooked=W.filter(r=>r.event&&r.event>=TODAY).reduce((a,r)=>a+(r.total||0),0);
+  const outstanding=W.reduce((a,r)=>a+(balAmt(r)||0),0);
+  const in30=W.flatMap(r=>(r.schedule||[]).filter(x=>!x.paid&&x.due&&daysTo(x.due)<=30)).reduce((a,x)=>a+(x.amount||0),0);
+  const late=W.flatMap(r=>(r.schedule||[]).filter(x=>!x.paid&&x.due&&x.due<TODAY)).reduce((a,x)=>a+(x.amount||0),0);
+  const noPrice=W.filter(r=>r.total==null).length;
+  const coll=LIVE?`<input id="collIn" value="${money(F.collected_2026_manual)}">`:money(F.collected_2026_manual);
+  const K=[[coll,`Collected 2026<small>Eman's count · as of ${fmt(F.as_of)}</small>`,'g'],
+    [money(itemized),'Recorded per client<small>in this tracker</small>','a'],
+    [money(upcomingBooked),'Booked revenue<small>upcoming events</small>','g'],
+    [money(outstanding),'Outstanding balances<small>total − paid</small>','y'],
+    [money(in30),'Due in next 30 days','o'],[money(late),'Overdue','r'],
+    [noPrice,'Bookings missing a price<small>fill in Total</small>','o'],[W.length,'Bookings (all time)','']];
+  document.getElementById('kpis').innerHTML=K.map(([v,l,c])=>`<div class="kpi ${c?'k'+c:''}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  const ci=document.getElementById('collIn'); if(ci) ci.onchange=async()=>{const v=Number(ci.value.replace(/[$,\s]/g,''));if(Number.isNaN(v))return toast('Enter a number',true);
+    try{const res=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field:'collected_2026_manual',value:v})});if(!res.ok)throw new Error(await res.text());DATA.finance=(await res.json()).finance;toast('Saved ✓');render()}catch(e){toast('Not saved: '+e.message,true)}};
+}
+function kpis(){
+  if(view==='fin') return finKpis();
+  const L=DATA.leads, c=s=>L.filter(r=>r.status===s).length;
+  const won=c('booked')+c('completed'), closed=L.length-c('open');
+  const W=L.filter(r=>WED.has(r.service)), ww=W.filter(r=>['booked','completed'].includes(r.status)).length, wc=W.filter(r=>r.status!=='open').length;
+  const K=[[L.length,'Total leads','a'],[c('booked'),'Booked · upcoming','g'],[c('open'),'Open · in talks','y'],[c('unanswered'),'Unanswered','o'],
+    [c('ghosted')+c('lost'),'Lost / ghosted','r'],[Math.round(won/Math.max(1,closed)*100)+'%','Booking rate · all',''],[Math.round(ww/Math.max(1,wc)*100)+'%','Booking rate · weddings',''],
+    [L.filter(needs).length,'Need action','o']];
+  document.getElementById('kpis').innerHTML=K.map(([v,l,c])=>`<div class="kpi ${c?'k'+c:''}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+}
+const TABS={
+  alerts:{label:'Alerts',alerts:true},
+  action:{label:'Action needed',rows:L=>L.filter(needs),cols:['status','client','event','next','replied','contract','retainer','nextpay'],sort:'pri'},
+  upcoming:{label:'Upcoming',rows:L=>L.filter(r=>r.event&&r.event>=TODAY&&['booked','open'].includes(r.status)),cols:['event','client','status','service','contract','retainer','nextpay','next'],sort:'event'},
+  bookings:{label:'Bookings',rows:L=>L.filter(r=>['booked','completed'].includes(r.status)),cols:['event','client','status','contract','retainer','balance','nextpay','total','paid','gallery','review','next'],sort:'eventdesc'},
+  all:{label:'All leads',rows:L=>L,cols:['inquiry','client','status','replied','event','service','contract','retainer','balance','gallery','lost_reason','next','notes'],sort:'inquiry'},
+  lost:{label:'Lost',rows:L=>L.filter(r=>['lost','ghosted'].includes(r.status)),cols:['inquiry','client','status','event','service','lost_reason','fault','notes'],sort:'inquiry',fault:true},
+  vendors:{label:'Vendors'},
+  fin:{label:'Booking financials',view:'fin',rows:L=>L.filter(isWon),cols:['event','client','status','total','paid','balamt','nextpay','plan','retainer','balance'],sort:'eventdesc'},
+  dues:{label:'Upcoming payments',view:'fin',dues:true},
+  payments:{label:'Payments received',view:'fin',pay:true}
+};
+const HEAD={status:'Status',client:'Client',event:'Event date',next:'Next step',replied:'Replied',contract:'Contract',retainer:'Retainer',balance:'Balance',gallery:'Gallery',review:'Review',service:'Service',inquiry:'Inquiry',quote:'Quoted',notes:'Notes',total:'Total',paid:'Paid',nextpay:'Next payment',lost_reason:'Lost reason',fault:'Whose side',balamt:'Balance left',plan:'Payment plan'};
+const PRI={unanswered:0,open:1,booked:2,lost:3,completed:4};
+
+function cell(k,r){
+  if((k==='lost_reason'||k==='fault')&&!['lost','ghosted'].includes(r.status)) return '<span class="muted">—</span>';
+  if(OPT[k]){
+    let v=r[k]??(k==='fault'?'unknown':''), c=col(k,v), l=lab(k,v);
+    if(k==='balance'&&overdue(r)){c='r';l='Overdue'}
+    if(!LIVE) return `<span class="pill ${c}">${l}</span>`;
+    return `<select class="pill ${c}" data-id="${r.id}" data-f="${k}">${OPT[k].map(o=>`<option value="${o[0]}"${o[0]===v?' selected':''}>${k==='balance'&&o[0]==='due'&&overdue(r)?'Overdue':o[1]}</option>`).join('')}</select>`;
+  }
+  switch(k){
+    case 'client': return `${esc(r.client)}<small>${esc(r.channel)}${r.venue?' · '+esc(r.venue):''}</small>${LIVE&&['open','booked','unanswered'].includes(r.status)?`<button class="ctlink" data-ct="${r.id}">📄 ${r.contract_terms?'Re-create contract':'Create contract'}</button>`:''}${r.contract_terms?.sign_by&&r.contract!=='signed'?`<small>Sign by ${fmt(r.contract_terms.sign_by)}</small>`:''}`;
+    case 'event': return LIVE?`<input class="inline date${r.event?'':' blank'}" type="date" value="${r.event||''}" data-id="${r.id}" data-f="event" title="${esc(r.event_text||'')}">`:(r.event?fmt(r.event):`<span class="muted">${esc(r.event_text)}</span>`);
+    case 'nextpay': { if(!r.schedule) return '<span class="muted">—</span>'; const n=nextInst(r);
+      if(!n) return '<span class="pill g">All paid</span>';
+      const c=n.due&&n.due<TODAY?'r':(n.due&&daysTo(n.due)<=14?'o':'y');
+      const dd=n.due?daysTo(n.due):null; const rel=dd==null?'':dd<0?` · ${-dd}d late`:dd===0?' · today':` · in ${dd}d`;
+      const t=money(n.amount)+(n.due?' · '+fmt(n.due).replace(/, \d{4}$/,''):' · no date')+rel;
+      return LIVE?`<button class="pill ${c} paybtn" data-id="${r.id}" data-i="${n.i}" title="${esc(n.label)} — click when received">${t}</button>`:`<span class="pill ${c}" title="${esc(n.label)}">${t}</span>`; }
+    case 'balamt': { const b=balAmt(r); if(b==null) return '<span class="muted">—</span>'; return `<span class="pill ${b===0?'g':overdue(r)?'r':'y'}">${money(b)}</span>`; }
+    case 'plan': { const S=r.schedule||[]; const items=S.map((x,i)=>`<div class="inst ${x.paid?'done':(x.due&&x.due<TODAY?'late':'')}" data-id="${r.id}" data-i="${i}" title="Click to edit">${money(x.amount)}${x.due?' · '+fmt(x.due):''} <span class="muted">${esc(x.label)}</span></div>`).join('');
+      return `<div class="plan">${items||'<span class="muted">No plan</span>'}${LIVE?`<button class="linkbtn addinst" data-id="${r.id}">+ add payment</button>`:''}</div>`; }
+    case 'inquiry': return fmt(r.inquiry);
+    case 'service': return svc(r.service);
+    case 'total': case 'paid': return LIVE?`<input class="inline money" inputmode="decimal" value="${r[k]??''}" placeholder="—" data-id="${r.id}" data-f="${k}">`:money(r[k]);
+    case 'next': { const t=nextStep(r); return LIVE?`<span class="note ${r.action_note?'':'auto'}" contenteditable="true" data-id="${r.id}" data-f="action_note" data-auto="${esc(autoAction(r))}">${esc(t)}</span>`:esc(t); }
+    default: return esc(r[k]);
+  }
+}
+const dueList=()=>DATA.leads.filter(isWon).flatMap(r=>(r.schedule||[]).map((x,i)=>({...x,i,r})).filter(x=>!x.paid)).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+function faultBar(R){const c=k=>R.filter(r=>(r.fault||'unknown')===k).length;
+  return `<div class="faultbar">Of ${R.length} lost/ghosted leads: <span class="pill o">Our side ${c('ours')}</span><span class="pill y">Client side ${c('client')}</span><span class="pill n">Bad timing ${c('timing')}</span><span class="pill n">Not sure ${c('unknown')}</span></div>`}
+const openAlerts=()=>(DATA.alerts||[]).filter(a=>!a.done);
+function updateBell(){const n=openAlerts().length, c=document.getElementById('bellCnt');c.textContent=n;c.classList.toggle('zero',!n)}
+function render(){
+  kpis();
+  const L=DATA.leads, q=document.getElementById('q').value.trim().toLowerCase(), fs=document.getElementById('fs').value, fv=document.getElementById('fv').value;
+  document.getElementById('tabs').innerHTML=Object.entries(TABS).filter(([k,t])=>(t.view||'pipe')===view).map(([k,t])=>{const n=t.alerts?openAlerts().length:t.rows?t.rows(L).length:t.pay?(DATA.payments||[]).length:t.dues?dueList().length:DATA.vendors.length;return `<button data-k="${k}" class="${k===tab?'on':''}">${t.label}<span class="n">${n}</span></button>`}).join('');
+  const T=TABS[tab], tbl=document.getElementById('t');
+  ['fs','fv'].forEach(i=>document.getElementById(i).style.display=T.rows?'':'none');
+  updateBell();
+  if(T.alerts){
+    const showDone=document.getElementById('fs').value==='done';
+    const A=(DATA.alerts||[]).filter(a=>(showDone||!a.done)&&(!q||JSON.stringify(a).toLowerCase().includes(q))).sort((a,b)=>(a.done-b.done)||String(b.at).localeCompare(String(a.at)));
+    const TY={contract_signed:['Contract signed','g'],reminder:['Sign-by reminder','o'],unclear:['Unclear message','o'],new_inquiry:['New inquiry','o'],possible_inquiry:['Possible inquiry','y'],client_email:['Client email','y'],payment:['Payment','g'],email:['Email','n']};
+    tbl.innerHTML='<thead><tr><th>When</th><th>Type</th><th>What</th><th>Details</th><th></th></tr></thead><tbody>'+
+     (A.length?A.map(a=>{const [tl,tc]=TY[a.type]||['Alert','n'];const lead=a.lead_id&&DATA.leads.find(l=>l.id===a.lead_id);
+       return `<tr class="${a.done?'done':''}"><td>${esc(String(a.at).replace('T',' '))}</td><td><span class="pill ${tc} atype">${tl}</span></td><td class="client">${esc(a.title)}${a.count>1?` <span class="pill y" style="font-size:10.5px;padding:1px 7px">${a.count} messages</span>`:''} ${a.unread&&!a.done?'<span class="pill o" style="font-size:10.5px;padding:1px 7px">Unread</span>':''}<small>${esc(a.from_email||'')}${a.clarify_sent?' · asked for details '+fmt(a.clarify_sent)+', waiting for reply':''}</small></td><td class="wrap" style="white-space:pre-line">${esc(a.detail)}</td>
+       <td>${LIVE?(a.done?`${a.ignored?'<span class="muted">Ignored · </span>':''}<button class="linkbtn al" data-a="${a.id}" data-x="undo">Reopen</button>`:`${(a.type==='possible_inquiry'||a.type==='unclear')&&!lead?`<button class="linkbtn al" data-a="${a.id}" data-x="ask">✉️ Ask what it's about</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="lead">✓ It's a lead · add</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="ignore" style="color:#a8231a">✗ Not a lead · ignore sender</button> &nbsp;`:''}${lead?`<button class="linkbtn al" data-a="${a.id}" data-x="open">Open lead</button> &nbsp;`:''}<button class="btn al" data-a="${a.id}" data-x="done">✓ Handled</button>`):''}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">No open alerts 🎉 New emails show up here within 5 minutes.</td></tr>')+'</tbody>';
+    document.getElementById('count').textContent=A.length+' alerts'; return;
+  }
+  if(T.dues){
+    const D=dueList().filter(x=>!q||JSON.stringify(x).toLowerCase().includes(q));
+    tbl.innerHTML='<thead><tr><th>Due</th><th>Client</th><th class="num">Amount</th><th>What</th><th>Event</th><th></th></tr></thead><tbody>'+
+      (D.length?D.map(x=>{const c=x.due&&x.due<TODAY?'r':(x.due&&daysTo(x.due)<=14?'o':'y');return `<tr><td><span class="pill ${c}">${x.due?fmt(x.due):'No date'}</span></td><td class="client">${esc(x.r.client)}</td><td class="num">${money(x.amount)}</td><td class="muted">${esc(x.label)}</td><td>${fmt(x.r.event)}</td><td>${LIVE?`<button class="pill g paybtn" data-id="${x.r.id}" data-i="${x.i}">Mark received</button>`:''}</td></tr>`}).join(''):'<tr><td colspan="6" class="empty">No payments scheduled</td></tr>')+'</tbody>';
+    document.getElementById('count').textContent=D.length+' due · '+money(D.reduce((a,x)=>a+(x.amount||0),0)); return;
+  }
+  if(T.pay){
+    ['fs','fv'].forEach(i=>document.getElementById(i).style.display='none');
+    const P=(DATA.payments||[]).filter(p=>!q||JSON.stringify(p).toLowerCase().includes(q));
+    const tot=P.reduce((a,p)=>a+(p.amount||0),0);
+    tbl.innerHTML='<thead><tr><th>Date</th><th>From</th><th class="num">Amount</th><th>Matched client</th><th>Method</th><th>Memo</th></tr></thead><tbody>'+
+      P.map(p=>`<tr><td>${fmt(p.date)}</td><td class="client">${esc(p.sender)}</td><td class="num">${money(p.amount)}</td><td>${p.client?`<span class="pill g">${esc(p.client)}</span>`:'<span class="pill n">Not matched</span>'}</td><td class="muted">${esc(p.method)}</td><td class="wrap">${esc(p.memo)}</td></tr>`).join('')+'</tbody>';
+    document.getElementById('count').textContent=P.length+' payments · '+money(tot); return;
+  }
+  if(!T.rows){
+    const V=DATA.vendors.filter(v=>!q||JSON.stringify(v).toLowerCase().includes(q));
+    tbl.innerHTML='<thead><tr><th>Name</th><th>Type</th><th>Channel</th><th>Note</th></tr></thead><tbody>'+V.map(v=>`<tr><td class="client">${esc(v.name)}</td><td>${esc(v.type||'')}</td><td>${esc(v.channel)}</td><td class="wrap">${esc(v.note)}</td></tr>`).join('')+'</tbody>';
+    document.getElementById('count').textContent=V.length+' vendors'; return;
+  }
+  let R=T.rows(L).filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q))&&(!fs||r.status===fs)&&(!fv||(fv==='w')===WED.has(r.service)));
+  const by=(k,d=1)=>(a,b)=>String(a[k]||'~').localeCompare(String(b[k]||'~'),undefined,{numeric:true})*d;
+  if(sortKey) R.sort(sortKey==='next'?(a,b)=>nextStep(a).localeCompare(nextStep(b))*sortDir:by(sortKey,sortDir));
+  else if(T.sort==='pri') R.sort((a,b)=>(PRI[a.status]-PRI[b.status])||by('event')(a,b));
+  else if(T.sort==='event') R.sort(by('event'));
+  else if(T.sort==='eventdesc') R.sort((a,b)=>String(b.event||'').localeCompare(String(a.event||'')));
+  else R.sort((a,b)=>String(b.inquiry||'').localeCompare(String(a.inquiry||'')));
+  const cls=k=>k==='client'?'client':(k==='next'||k==='notes'||k==='quote'||k==='plan')?'wrap':(k==='total'||k==='paid')?'num':'';
+  const fb=document.getElementById('fb'); if(fb) fb.remove();
+  if(T.fault) tbl.closest('.card').querySelector('.toolbar').insertAdjacentHTML('afterend',faultBar(R).replace('class="faultbar"','class="faultbar" id="fb"'));
+  tbl.innerHTML='<thead><tr>'+T.cols.map(c=>`<th data-c="${c}">${HEAD[c]}${sortKey===c?(sortDir>0?' ↑':' ↓'):''}</th>`).join('')+'</tr></thead><tbody>'+
+    (R.length?R.map(r=>'<tr>'+T.cols.map(c=>`<td class="${cls(c)}">${cell(c,r)}</td>`).join('')+'</tr>').join(''):`<tr><td colspan="${T.cols.length}" class="empty">Nothing here 🎉</td></tr>`)+'</tbody>';
+  document.getElementById('count').textContent=R.length+' shown';
+}
+function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' err':'');clearTimeout(t._h);t._h=setTimeout(()=>t.className='toast',1600)}
+async function save(id,field,value){
+  const r=DATA.leads.find(x=>x.id===id); const old=r[field]; r[field]=value; render();
+  try{const res=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,field,value})});
+    if(!res.ok)throw new Error(await res.text()); Object.assign(r,(await res.json()).lead); toast('Saved ✓'); render();}
+  catch(e){r[field]=old;render();toast('Not saved: '+e.message,true)}
+}
+document.addEventListener('change',e=>{const el=e.target;if(!el.dataset.f||!el.dataset.id)return;
+  let v=el.value; if(el.dataset.f==='total'||el.dataset.f==='paid'){v=v.replace(/[$,\s]/g,'');v=v===''?null:Number(v);if(Number.isNaN(v)){toast('Enter a number',true);return}}
+  save(el.dataset.id,el.dataset.f,v).then(()=>{if(el.dataset.f==='status'&&v==='lost')askLost(DATA.leads.find(x=>x.id===el.dataset.id))});
+  if(el.dataset.f==='lost_reason'&&FAULT_OF[v]){const r=DATA.leads.find(x=>x.id===el.dataset.id);if(!r.fault||r.fault==='unknown')save(r.id,'fault',FAULT_OF[v])}});
+document.addEventListener('keydown',e=>{if(e.target.classList?.contains('note')&&e.key==='Enter'){e.preventDefault();e.target.blur()}});
+document.addEventListener('focusout',e=>{const el=e.target;if(!el.classList?.contains('note'))return;
+  let t=el.innerText.trim(); const r=DATA.leads.find(x=>x.id===el.dataset.id); if(t===el.dataset.auto)t='';
+  if(t!==(r.action_note||'')) save(r.id,'action_note',t)});
+document.getElementById('views').onclick=e=>{const b=e.target.closest('button');if(!b)return;lastTab[view]=tab;view=b.dataset.v;tab=lastTab[view];sortKey=null;
+  document.querySelectorAll('#views button').forEach(x=>x.classList.toggle('on',x.dataset.v===view));document.getElementById('addBtn').style.display=(view==='pipe'&&LIVE)?'':'none';render()};
+const lostDlg=document.getElementById('lostDlg'), LF=document.getElementById('lostForm');
+LF.elements.lost_reason.innerHTML=OPT.lost_reason.filter(o=>o[0]).map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('');
+LF.elements.fault.innerHTML=OPT.fault.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('');
+LF.elements.lost_reason.onchange=()=>{LF.elements.fault.value=FAULT_OF[LF.elements.lost_reason.value]||'unknown'};
+let lostFor=null;
+function askLost(r){lostFor=r;document.getElementById('lostWho').textContent=r.client;LF.elements.lost_reason.value=OPT.lost_reason.some(o=>o[0]===r.lost_reason&&o[0])?r.lost_reason:'went_with_other';LF.elements.fault.value=r.fault||FAULT_OF[LF.elements.lost_reason.value];lostDlg.showModal()}
+lostDlg.addEventListener('close',async()=>{if(lostDlg.returnValue!=='ok'||!lostFor)return;await save(lostFor.id,'lost_reason',LF.elements.lost_reason.value);await save(lostFor.id,'fault',LF.elements.fault.value)});
+const instDlg=document.getElementById('instDlg'), IF=document.getElementById('instForm'); let instFor=null;
+document.getElementById('t').addEventListener('click',e=>{const b=e.target.closest('.addinst');if(!b)return;instFor=DATA.leads.find(x=>x.id===b.dataset.id);IF.reset();document.getElementById('instWho').textContent=instFor.client;instDlg.showModal()});
+instDlg.addEventListener('close',async()=>{if(instDlg.returnValue!=='ok'||!instFor)return;const amt=Number(String(IF.elements.amount.value).replace(/[$,\s]/g,''));if(Number.isNaN(amt))return toast('Amount must be a number',true);
+  try{const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:instFor.id,action:'add',label:IF.elements.label.value,amount:amt,due:IF.elements.due.value,paid:IF.elements.paid.checked})});
+    if(!res.ok)throw new Error(await res.text());Object.assign(instFor,(await res.json()).lead);toast('Payment added ✓');render()}catch(err){toast('Not saved: '+err.message,true)}});
+document.getElementById('bell').onclick=()=>{view='pipe';tab='alerts';document.querySelectorAll('#views button').forEach(x=>x.classList.toggle('on',x.dataset.v==='pipe'));render()};
+async function alertAct(id,action,lead_id){const res=await fetch('/api/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action,lead_id})});
+  if(!res.ok)throw new Error(await res.text());const al=(await res.json()).alert;Object.assign(DATA.alerts.find(a=>a.id===id),al);render()}
+let alertForLead=null;
+document.getElementById('t').addEventListener('click',async e=>{const b=e.target.closest('.al');if(!b)return;const a=DATA.alerts.find(x=>x.id===b.dataset.a);
+  try{ if(b.dataset.x==='done'){await alertAct(a.id,'done');toast('Marked handled ✓')}
+   else if(b.dataset.x==='undo'){await alertAct(a.id,'undo')}
+   else if(b.dataset.x==='ask'){mailFor=a;const first=(a.title.split(': ').pop()||'').replace(/ \(in Junk!\)/,'').split(/[ @]/)[0];
+     MF.elements.to.value=a.from_email;MF.elements.subject.value='Re: '+((a.detail||'').split(' — ')[0]||'Your message').slice(0,120);
+     MF.elements.body.value=`Hi ${first&&!/^[a-z0-9._%+-]+$/.test(first)?first:'there'},\n\nThank you so much for reaching out! I'd love to help. Could you share a little more about what you're looking for, such as the type of event or session (wedding, nikkah, engagement, family, etc.), the date and location, and roughly how many hours of coverage you have in mind?\n\nOnce I know a bit more, I'll send over my availability and the right details for you.\n\nWarmly,\nEman\nEmanant Visuals · emanantvisuals.com · @emanantvisuals`;mailDlg.showModal()}
+   else if(b.dataset.x==='ignore'){await alertAct(a.id,'ignore');toast('Ignored · future emails from '+(a.from_email||'this sender').split('@').pop()+' won\'t alert')}
+   else if(b.dataset.x==='open'){const l=DATA.leads.find(x=>x.id===a.lead_id);tab='all';document.getElementById('q').value=l?l.client:'';render()}
+   else if(b.dataset.x==='lead'){alertForLead=a;F.reset();F.elements.client.value=a.title.replace(/^Possible inquiry: /,'');F.elements.inquiry.value=TODAY;F.elements.notes.value=a.detail+(a.from_email?' ('+a.from_email+')':'');F.elements.channel.value='Email';dlg.showModal()} }
+  catch(err){toast('Not saved: '+err.message,true)}});
+const mailDlg=document.getElementById('mailDlg'), MF=document.getElementById('mailForm'); let mailFor=null;
+mailDlg.addEventListener('close',async()=>{if(mailDlg.returnValue!=='ok'||!mailFor)return;
+  try{const res=await fetch('/api/send-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:mailFor.id,subject:MF.elements.subject.value,body:MF.elements.body.value})});
+    if(!res.ok)throw new Error(await res.text());Object.assign(DATA.alerts.find(x=>x.id===mailFor.id),(await res.json()).alert);toast('Email sent ✓ · watching for their reply');render()}catch(err){toast('Not sent: '+err.message,true)}});
+const ctDlg=document.getElementById('ctDlg'), CT=document.getElementById('ctForm'); let ctFor=null;
+const dayRow=(x={})=>`<tr><td><input data-k="event" value="${esc(x.event||'')}" placeholder="Nikkah"></td><td><input type="date" data-k="date" value="${x.date||''}"></td><td><input data-k="start" value="${esc(x.start||'')}" placeholder="2:00 PM"></td><td><input data-k="end" value="${esc(x.end||'')}" placeholder="10:00 PM"></td><td><input data-k="hours" value="${esc(x.hours||'')}" style="width:60px"></td></tr>`;
+const planRow=(x={})=>`<tr><td><input data-k="label" value="${esc(x.label||'')}" placeholder="50% of balance"></td><td><input data-k="amount" value="${x.amount??''}" inputmode="decimal"></td><td><input type="date" data-k="due" value="${x.due||''}"></td></tr>`;
+document.getElementById('t').addEventListener('click',e=>{const b=e.target.closest('.ctlink');if(!b)return;e.stopPropagation();ctFor=DATA.leads.find(x=>x.id===b.dataset.ct);
+  const t=ctFor.contract_terms||{}, f=t.fields||{}; CT.reset(); document.getElementById('ctWho').textContent=ctFor.client;
+  const E=CT.elements; const set=(k,v)=>{if(E[k]&&v!=null&&v!=='')E[k].value=v};
+  set('client_names',f.client_names||ctFor.client);set('client_email',f.client_email||ctFor.src_email);set('locations',f.locations||ctFor.venue);set('session_type',f.session_type||svc(ctFor.service));
+  ['first_names','client_phone','client_address','city_state','day_of_contact','package_name','image_estimate','coverage_hours','photographers','inclusions','addons','privacy_option','travel_fee'].forEach(k=>set(k,f[k]));
+  set('total',t.total??ctFor.total);set('retainer',t.retainer);
+  const days=t.days&&t.days.length?t.days:[{date:ctFor.event||''}];
+  document.getElementById('ctDays').innerHTML='<tr><th>Event</th><th>Date</th><th>Start</th><th>End</th><th>Hours</th></tr>'+[0,1,2,3].map(i=>dayRow(days[i])).join('');
+  const WED=['wedding','multi_day_wedding','nikkah','walima','mehndi','baraat','reception'];
+  if(!t.retainer){const sv=ctFor.service||'';E.retainer.value=WED.includes(sv)?500:(sv==='graduation'?75:100);}
+  const plan=t.plan||[]; document.getElementById('ctPlan').innerHTML='<tr><th>Label</th><th>Amount ($)</th><th>Due date</th></tr>'+[0,1,2].map(i=>planRow(plan[i])).join('');
+  ctDlg.showModal()});
+function autoSplit(){const E=CT.elements,num=v=>Number(String(v).replace(/[$,\s]/g,''));const tot=num(E.total.value),ret=num(E.retainer.value);
+  const d0=[...document.querySelectorAll('#ctDays input[data-k="date"]')].map(i=>i.value).filter(Boolean).sort()[0];if(!tot||!d0||isNaN(ret))return;
+  const pr=[...document.querySelectorAll('#ctPlan tr')].slice(1);if(pr.some(tr=>tr.querySelector('[data-k="amount"]').value))return;
+  const bal=tot-ret,h1=Math.round(bal/2),dt=(n)=>{const x=new Date(d0+'T12:00');x.setDate(x.getDate()-n);return x.toISOString().slice(0,10)};
+  const set=(tr,l,a,du)=>{tr.querySelector('[data-k="label"]').value=l;tr.querySelector('[data-k="amount"]').value=a;tr.querySelector('[data-k="due"]').value=du};
+  set(pr[0],'50% of balance',h1,dt(14));set(pr[1],'Final balance',bal-h1,dt(1));}
+CT.addEventListener('change',e=>{if(['total','retainer'].includes(e.target.name)||e.target.dataset.k==='date')autoSplit()});
+const rows=id=>[...document.querySelectorAll('#'+id+' tr')].slice(1).map(tr=>Object.fromEntries([...tr.querySelectorAll('input')].map(i=>[i.dataset.k,i.value.trim()])));
+ctDlg.addEventListener('close',async()=>{if(ctDlg.returnValue!=='ok'||!ctFor)return;const E=CT.elements;
+  const fields=Object.fromEntries(['client_names','first_names','client_phone','client_email','client_address','session_type','city_state','locations','day_of_contact','package_name','image_estimate','coverage_hours','photographers','inclusions','addons','privacy_option','travel_fee'].map(k=>[k,E[k].value.trim()]));
+  const num=v=>Number(String(v).replace(/[$,\s]/g,''));
+  const body={id:ctFor.id,fields,days:rows('ctDays').filter(x=>x.date),plan:rows('ctPlan').filter(x=>x.amount).map(x=>({...x,amount:num(x.amount)})),total:num(E.total.value),retainer:num(E.retainer.value)};
+  toast('Creating contract…');
+  try{const res=await fetch('/api/contract/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
+    const j=await res.json();Object.assign(ctFor,j.lead);toast(j.mailed===true?'Contract draft emailed to Eman ✓':'Draft saved (email failed: '+j.mailed+')',j.mailed!==true);render()}catch(err){toast('Not created: '+err.message,true)}});
+(async()=>{try{const j=await (await fetch('/api/brief')).json();if(!j.brief||j.acked)return;
+  const h=esc(j.brief.text).split('\n').map(x=>x.startsWith('## ')?`<h2 style="margin:0 0 10px;font-size:19px">${x.slice(3)}</h2>`:x.startsWith('- ')?`<div style="padding:3px 0 3px 4px">${x.slice(2)}</div>`:x?`<div style="margin-top:12px">${x}</div>`:'').join('').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')/* leak-check: allow: regex backreference, not a price */.replace(/_(.+?)_/g,'<i style="color:var(--mute)">$1</i>');
+  document.getElementById('briefBody').innerHTML=h;const ov=document.getElementById('briefOv');ov.style.display='block';
+  document.getElementById('briefOk').onclick=async()=>{await fetch('/api/brief-ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:j.brief.id})});ov.style.display='none'};}catch(e){}})();
+const docMenu=document.getElementById('docMenu');
+document.getElementById('docsBtn').addEventListener('click',e=>{e.stopPropagation();docMenu.classList.toggle('open')});
+document.addEventListener('click',e=>{if(!e.target.closest('.docs'))docMenu.classList.remove('open')});
+docMenu.querySelectorAll('button[data-f]').forEach(b=>b.addEventListener('click',async()=>{docMenu.classList.remove('open');try{const r=await fetch('/api/open-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:b.dataset.f})});toast(r.ok?'Opened in Finder':'Could not open folder',!r.ok)}catch(err){toast('Could not open folder',true)}}));
+const eiDlg=document.getElementById('editInstDlg'), EI=document.getElementById('eiForm'); let eiFor=null;
+document.getElementById('t').addEventListener('click',e=>{const it=e.target.closest('.inst');if(!it||!LIVE)return;const r=DATA.leads.find(x=>x.id===it.dataset.id), i=+it.dataset.i, x=r.schedule[i];eiFor={r,i};
+  document.getElementById('eiWho').textContent=r.client;EI.elements.label.value=x.label||'';EI.elements.amount.value=x.amount??'';EI.elements.due.value=x.due||'';EI.elements.paid.checked=!!x.paid;eiDlg.showModal()});
+eiDlg.addEventListener('close',async()=>{const v=eiDlg.returnValue;if(!eiFor||(v!=='ok'&&v!=='delete'))return;
+  if(v==='delete'&&!confirm('Delete this payment from the plan?'))return;
+  const body=v==='delete'?{id:eiFor.r.id,action:'delete',index:eiFor.i}:{id:eiFor.r.id,action:'update',index:eiFor.i,label:EI.elements.label.value,amount:Number(String(EI.elements.amount.value).replace(/[$,\s]/g,'')),due:EI.elements.due.value,paid:EI.elements.paid.checked};
+  try{const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
+    Object.assign(eiFor.r,(await res.json()).lead);if(v==='delete'&&!eiFor.r.schedule.length)delete eiFor.r.schedule;toast(v==='delete'?'Payment removed ✓':'Saved ✓');render()}catch(err){toast('Not saved: '+err.message,true)}});
+// auto-refresh every 60s so new emails/alerts appear without reloading
+setInterval(async()=>{if(!LIVE||document.querySelector('dialog[open]')||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
+  try{const fresh=await (await fetch('/api/data')).json();const before=openAlerts().length;DATA=fresh;TODAY=fresh.today;render();if(openAlerts().length>before)toast('🔔 New alert');}catch(e){}},60000);
+document.getElementById('tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;tab=b.dataset.k;sortKey=null;render()};
+document.getElementById('t').onclick=e=>{const th=e.target.closest('th');if(!th||!th.dataset.c)return;const c=th.dataset.c;sortDir=sortKey===c?-sortDir:1;sortKey=c;render()};
+document.getElementById('t').addEventListener('click',async e=>{const b=e.target.closest('.paybtn');if(!b)return;e.stopPropagation();
+  const r=DATA.leads.find(x=>x.id===b.dataset.id), n=r.schedule[+b.dataset.i];
+  if(!confirm(`Mark ${money(n.amount)} (${n.label}) from ${r.client} as received?`))return;
+  try{const res=await fetch('/api/pay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,index:+b.dataset.i})});
+    if(!res.ok)throw new Error(await res.text());Object.assign(r,(await res.json()).lead);toast('Payment recorded ✓');render()}catch(err){toast('Not saved: '+err.message,true)}});
+['q','fs','fv'].forEach(i=>document.getElementById(i).addEventListener('input',render));
+// add lead
+const dlg=document.getElementById('dlg'), F=document.getElementById('addForm');
+F.elements.service.innerHTML=SERVICES.map(s=>`<option value="${s}">${svc(s)}</option>`).join('');
+F.elements.status.innerHTML=OPT.status.map(o=>`<option value="${o[0]}"${o[0]==='unanswered'?' selected':''}>${o[1]}</option>`).join('');
+document.getElementById('addBtn').onclick=()=>{alertForLead=null;F.reset();F.elements.inquiry.value=TODAY;dlg.showModal()};
+dlg.addEventListener('close',async()=>{if(dlg.returnValue!=='ok')return;const body=Object.fromEntries(new FormData(F));
+  try{const res=await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
+    const nl=(await res.json()).lead;DATA.leads.push(nl);toast('Lead added ✓');if(alertForLead){await alertAct(alertForLead.id,'done',nl.id);alertForLead=null}render()}catch(e){toast('Not added: '+e.message,true)}});
+async function boot(){
+  DATA = LIVE ? await (await fetch('/api/data')).json() : BOOT;
+  TODAY = DATA.today;
+  if((DATA.alerts||[]).some(a=>!a.done)) tab='alerts';
+  OPT.status.forEach(o=>document.getElementById('fs').insertAdjacentHTML('beforeend',`<option value="${o[0]}">${o[1]}</option>`));
+  document.getElementById('sub').textContent=`${DATA.leads.length} leads · Instagram, email, website & referrals · today ${fmt(TODAY)}`;
+  document.getElementById('mode').innerHTML=LIVE?'<span class="dot"></span>Live · changes save automatically':'<span class="dot off"></span>Read-only snapshot';
+  if(!LIVE) document.getElementById('addBtn').style.display='none';
+  render();
+}
+boot();
+</script></body></html>

@@ -1,0 +1,28 @@
+# ALLOWLIST: everything is ignored by default. Only the files listed below can be committed.
+# To add a new file you must un-ignore it here on purpose (and it must pass the leak checks).
+# Client data, logs, backups, contract wording, .env.local etc. can never be added by accident.
+*
+!*/
+
+!.gitignore
+!.gitleaks.toml
+!.env.example
+!README.md
+
+!evenv.py
+!server.py
+!watch.py
+!calendar_sync.py
+!zelle_import.py
+!brief.py
+!dashboard_template.html
+!calendar.html
+
+!contracts/render_contract.py
+!contracts/render_questionnaire.py
+
+!supabase/config.toml
+
+!scripts/check_leaks.py
+!.githooks/pre-commit
+!.githooks/pre-push

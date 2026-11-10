@@ -1,0 +1,18 @@
+# gitleaks config: default rules (API keys, tokens, private keys) plus project-specific ones.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role-or-secret-key"
+description = "Supabase service_role JWT or sb_secret key"
+regex = '''(sb_secret_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]*cm9sZSI6InNlcnZpY2Vfcm9sZS[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+)'''
+
+[[rules]]
+id = "apple-app-specific-password"
+description = "Apple app-specific password (xxxx-xxxx-xxxx-xxxx)"
+regex = '''\b[a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4}\b'''
+
+[[rules]]
+id = "healthchecks-ping-url"
+description = "healthchecks.io ping URL (acts as a secret)"
+regex = '''hc-ping\.com/[A-Za-z0-9-]{20,}'''

@@ -1,0 +1,60 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Emanant Visuals · Calendar</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f4ef;--panel:#fff;--line:#e6e0d6;--ink:#2b2622;--mute:#8a8178;--acc:#7a5c45}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:19px;margin:0 12px 0 0}a.back{color:var(--acc);text-decoration:none;font-weight:600}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+#month{font-weight:700;font-size:17px;min-width:170px;text-align:center}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin-left:auto}
+.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+main{padding:16px 22px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.dow{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);padding:2px 6px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:118px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.day.out{opacity:.4}.day.today{outline:2px solid var(--acc)}
+.day.clash{border-color:#d9534f;background:#fff6f5}
+.dn{font-size:12px;font-weight:700;display:flex;justify-content:space-between}.dn .cl{color:#c0392b;font-weight:700}
+.ev{border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 14%,white);border-radius:6px;padding:3px 6px;font-size:12px;cursor:default}
+.ev b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ev small{color:var(--mute);display:block}
+.list{margin-top:22px}.list h2{font-size:15px;margin:0 0 8px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
+td,th{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:11px;text-transform:uppercase;color:var(--mute);background:#faf8f4}
+.pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600;color:#fff;background:var(--c)}
+</style></head><body>
+<header><a class="back" href="/">← Dashboard</a><h1>📅 Calendar</h1>
+<button id="prev">‹</button><div id="month"></div><button id="next">›</button><button id="today">Today</button>
+<button id="fAll" class="on">All inquiries</button><button id="fLive">Hide lost / ghosted</button>
+<div class="legend"><span style="--c:#2e9e5b">Booked</span><span style="--c:#e0a72e">Open / waiting</span><span style="--c:#e07b2e">Unanswered</span><span style="--c:#b8b0a6">Ghosted</span><span style="--c:#d9534f">Lost</span><span style="--c:#6c8fb8">Completed</span></div>
+</header>
+<main><div class="grid" id="grid"></div>
+<div class="list"><h2>Clashes (same day, more than one inquiry)</h2><div id="clashes"></div></div></main>
+<script>
+const COL={booked:'#2e9e5b',open:'#e0a72e',unanswered:'#e07b2e',ghosted:'#b8b0a6',lost:'#d9534f',completed:'#6c8fb8'};
+const LBL={booked:'Booked',open:'Open',unanswered:'Unanswered',ghosted:'Ghosted',lost:'Lost',completed:'Completed'};
+let EV=[],live=false,cur=new Date();cur.setDate(1);
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rank={booked:0,open:1,unanswered:2,completed:3,ghosted:4,lost:5};
+function shown(){return EV.filter(e=>!live||!['lost','ghosted'].includes(e.status))}
+function render(){
+  const ev=shown(),by={};ev.forEach(e=>(by[e.date]=by[e.date]||[]).push(e));
+  Object.values(by).forEach(a=>a.sort((x,y)=>rank[x.status]-rank[y.status]));
+  document.getElementById('month').textContent=cur.toLocaleString('en-US',{month:'long',year:'numeric'});
+  const g=document.getElementById('grid');g.innerHTML=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="dow">${d}</div>`).join('');
+  const start=new Date(cur);start.setDate(1-cur.getDay());const t=iso(new Date());
+  for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const k=iso(d),a=by[k]||[];
+    const act=a.filter(e=>['booked','open','unanswered'].includes(e.status)).length;
+    g.insertAdjacentHTML('beforeend',`<div class="day ${d.getMonth()!==cur.getMonth()?'out':''} ${k===t?'today':''} ${act>1?'clash':''}"><div class="dn">${d.getDate()}${act>1?'<span class="cl">⚠ '+act+' on this day</span>':''}</div>${a.map(e=>`<div class="ev" style="--c:${COL[e.status]||'#999'}" title="${esc(e.client+' · '+(LBL[e.status]||e.status)+' · '+(e.service||'')+(e.venue?' · '+e.venue:''))}"><b>${esc(e.client)}</b><small>${esc(e.label?e.label+' · ':'')}${esc(e.time||'time TBD')}</small></div>`).join('')}</div>`)}
+  const rows=Object.entries(by).filter(([k,a])=>k>=t&&a.filter(e=>['booked','open','unanswered'].includes(e.status)).length>1).sort();
+  document.getElementById('clashes').innerHTML=rows.length?`<table><tr><th>Date</th><th>Inquiries</th></tr>${rows.map(([k,a])=>`<tr><td>${new Date(k+'T12:00').toDateString()}</td><td>${a.filter(e=>['booked','open','unanswered'].includes(e.status)).map(e=>`<span class="pill" style="--c:${COL[e.status]}">${LBL[e.status]}</span> ${esc(e.client)} <small>(${esc(e.time||'time TBD')}${e.venue?' · '+esc(e.venue):''})</small>`).join('<br>')}</td></tr>`).join('')}</table>`:'<p style="color:var(--mute)">No upcoming clashes among active inquiries.</p>';
+}
+document.getElementById('prev').onclick=()=>{cur.setMonth(cur.getMonth()-1);render()};
+document.getElementById('next').onclick=()=>{cur.setMonth(cur.getMonth()+1);render()};
+document.getElementById('today').onclick=()=>{cur=new Date();cur.setDate(1);render()};
+document.getElementById('fAll').onclick=e=>{live=false;e.target.classList.add('on');document.getElementById('fLive').classList.remove('on');render()};
+document.getElementById('fLive').onclick=e=>{live=true;e.target.classList.add('on');document.getElementById('fAll').classList.remove('on');render()};
+fetch('/api/calendar').then(r=>r.json()).then(j=>{EV=j;render()});
+</script></body></html>
