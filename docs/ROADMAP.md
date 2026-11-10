@@ -65,7 +65,7 @@ File: `supabase/migrations/20261110000000_schema_v1.sql`. Revised 11/10 after an
 
 - **Exact round trip:** every item is kept as-is in `raw` (json keeps key order, missing-vs-null, `500` vs `500.0`). `load()` = raw ordered by position. The generated columns can't drift from raw and give NULL (not an error) for odd values.
 - **Security:** RLS + FORCE RLS on every table. `anon`: no privileges. `authenticated`: SELECT only, and only if the user ID is on the allowlist. **No write policies** (read-only until Phase 7). Future tables and functions are closed until granted on purpose.
-- **Not in v1 on purpose:** a changelog (dropped) · enum checks and the alert→lead link (the live data may hold values the code never wrote) · outbox / heartbeat / job tables (Phase 4) · requiring MFA in the database (decision pending).
+- **Not in v1 on purpose:** a changelog (dropped) · enum checks and the alert→lead link (the live data may hold values the code never wrote) · outbox / heartbeat / job tables (Phase 4).
 
 ---
 
@@ -115,7 +115,7 @@ Split `schedule` + `contract_terms` into tables · custom domain `hq.emanantvisu
 | Seen list → `emails` table with a status | ✅ Ibrahim 11/10 |
 | Store each item exactly as in the JSON + generated columns | ⏳ Proposed 11/10 (Claude), **replaces my first draft** (typed columns + key-order/extra bookkeeping), after the adversarial review found a blocker and two exactness bugs in it |
 | Storage test = "anon GET ≠ 200" instead of "= 403" | ⏳ Proposed 11/10. Supabase answers 400/404 for private objects |
-| Require MFA (TOTP) for reading data, not only for login settings | ⏳ Open: safer (a stolen password alone reads nothing), but Phase 5's login page must then ask for the 6-digit code |
+| Extra MFA rule inside the database | ✅ **No** (Ibrahim 11/10): Supabase's own MFA setting is enough; don't build what isn't needed |
 
 ## Change log v1 → v2
 | Finding (reviewer) | Fix |
