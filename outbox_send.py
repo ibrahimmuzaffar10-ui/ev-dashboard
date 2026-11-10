@@ -101,6 +101,11 @@ def main():
             sent += 1
     finally:
         c.close()
+    try:
+        import evtime
+        db.doc_write("heartbeat_outbox", {"at": evtime.now_ct().isoformat(timespec="seconds"), "sent": sent, "failed": failed})
+    except Exception as ex:
+        print("heartbeat not saved:", ex)
     print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} outbox: {sent} sent, {failed} failed")
 
 

@@ -44,7 +44,7 @@ def jobs(mode):
         base = {"EV_BACKEND": "supabase"}
         return [
             job("com.emanantvisuals.dashboard", "server.py", dict(base, EV_PORT="8787"), keepalive=True, log="dashboard"),
-            job("com.emanantvisuals.watch", "watch.py", base, interval=300, log="watch"),
+            job("com.emanantvisuals.watch", "watch.py", base, interval=60, log="watch"),   # step 7: every minute (lock file stops overlaps)
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
         ]

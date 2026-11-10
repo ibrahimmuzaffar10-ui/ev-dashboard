@@ -162,16 +162,42 @@ class handler(server.H):
         ok = all(isinstance(v, dict) and v.get(".pdf", 0) > 1000 and v.get(".docx", 0) > 1000 for v in out.values())
         return self._send(200 if ok else 500, json.dumps({"ok": ok, "python": sys.version.split()[0], "render": out}))
 
+    def _keepalive(self):
+        """Daily Vercel cron: one tiny query so the free Supabase project never pauses (7 days idle).
+        Vercel sends 'Authorization: Bearer <CRON_SECRET>'; anything else gets 404."""
+        import hmac
+        sec = os.environ.get("CRON_SECRET", "")
+        if not sec or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + sec):
+            return self._send(404, '{"error":"not found"}')
+        n = db._read_only(lambda c: c.run("select count(*) from public.leads"))[0][0]
+        return self._send(200, json.dumps({"ok": n > 0}))
+
+    def _health(self):
+        """Is the Mac alive? Last watcher and email-sender runs, and emails waiting to go out."""
+        import datetime as dt, evtime
+        hw, ho = db.read_doc("heartbeat_watch") or {}, db.read_doc("heartbeat_outbox") or {}
+        queued = db._read_only(lambda c: c.run("select count(*) from public.outbox where status in ('queued', 'sending')"))[0][0]
+        def age(h):
+            try: return round((evtime.now_ct() - dt.datetime.fromisoformat(h["at"])).total_seconds() / 60)
+            except Exception: return None
+        w, o = age(hw), age(ho)
+        mac_ok = w is not None and w <= 15 and not hw.get("shadow")
+        return self._send(200, json.dumps({"mac_online": mac_ok, "watcher_minutes_ago": w, "sender_minutes_ago": o, "emails_waiting": queued}))
+
     def do_GET(self):
         p = self.path.split("?")[0]
         if p == "/api/_selftest":
             return self._selftest()
+        if p == "/api/_keepalive":
+            return self._keepalive()
         if p == "/login":
             return self._login_page()
         if p == "/logout":
             self._cookies = [_cookie("ev_at", "", 0), _cookie("ev_rt", "", 0)]
             return self._redirect("/login")
         if self._gate():
+            if p == "/api/health":
+                return self._health()
             return super().do_GET()
 
     def do_POST(self):

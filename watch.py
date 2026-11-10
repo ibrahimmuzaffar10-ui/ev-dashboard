@@ -120,6 +120,20 @@ class State:
             db.doc_write("watch_state", out)
 
 
+def heartbeat(ok):
+    """Proof of life: a heartbeat in the database every run, and (only when everything worked) a ping
+    to the free healthchecks.io monitor in EV_HEALTHCHECK_URL, which emails Ibrahim + Eman if the Mac
+    goes quiet. Never fails the run."""
+    try:
+        db.doc_write("heartbeat_watch", {"at": evtime.now_ct().isoformat(timespec="seconds"), "ok": ok, "shadow": SHADOW})
+    except Exception as ex:
+        print("heartbeat not saved:", ex)
+    url = os.environ.get("EV_HEALTHCHECK_URL")
+    if ok and url and not SHADOW:
+        try: urllib.request.urlopen(url, timeout=10).read()
+        except Exception as ex: print("healthcheck ping failed:", ex)
+
+
 def main():
     os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
     lock = open(LOCK_PATH, "w")
@@ -285,6 +299,7 @@ def main():
     except Exception as ex:
         print("unread sync skipped:", ex)
     S.save(all_ok)
+    heartbeat(all_ok)
     print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} checked {len(envs)} emails, {made} alerts" + ("" if all_ok else " (some failed: will retry)"))
 
 if __name__ == "__main__":
