@@ -195,3 +195,8 @@ def store(d):
 
     c.run("commit")                                 # before the route answers 200
     tx["done"] = True
+
+
+def user_is_allowed(uid):
+    """True only if this Supabase user id is on the allowlist (asks about one id; cannot list it)."""
+    return bool(_read_only(lambda c: c.run("select private.user_is_allowed(cast(:u as uuid))", u=uid)[0][0]))

@@ -21,8 +21,9 @@ PAY_PATH = os.path.join(DATA_DIR, "payments.json")
 PORT = int(os.environ.get("EV_PORT", "8787"))
 HOST = os.environ.get("EV_HOST", "127.0.0.1")
 LOCK = threading.Lock()
-OWN_EMAIL = evenv.need("EV_ICLOUD_LOGIN")
-FROM_EMAIL = evenv.need("EV_FROM_EMAIL")  # business address (iCloud+ custom domain); login stays the Apple ID email
+# Mail settings are only needed where mail is sent (the Mac). The cloud never sends mail itself.
+OWN_EMAIL = os.environ.get("EV_ICLOUD_LOGIN", "") if db.CLOUD else evenv.need("EV_ICLOUD_LOGIN")
+FROM_EMAIL = os.environ.get("EV_FROM_EMAIL", "") if db.CLOUD else evenv.need("EV_FROM_EMAIL")  # business address (iCloud+ custom domain); login stays the Apple ID email
 
 def icloud_pw():
     return subprocess.run(["security", "find-generic-password", "-s", "hermes-icloud", "-w"], capture_output=True, text=True, timeout=20).stdout.strip()

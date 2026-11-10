@@ -41,3 +41,7 @@
 !scripts/test_phase4a.py
 !.githooks/pre-commit
 !.githooks/pre-push
+
+!api/index.py
+!vercel.json
+!.vercelignore

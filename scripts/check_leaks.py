@@ -75,7 +75,7 @@ def main():
     for f in files(mode):
         p = os.path.join(ROOT, f)
         if not os.path.isfile(p): continue
-        if f.endswith((".pdf", ".docx", ".xlsx", ".json", ".log")):
+        if f.endswith((".pdf", ".docx", ".xlsx", ".json", ".log")) and f != "vercel.json":  # vercel.json: config, content still scanned
             print(f"{f}: BLOCKED file type"); hits += 1; continue
         if f == ".env.local" or f.startswith("backups/"):
             print(f"{f}: BLOCKED path"); hits += 1; continue

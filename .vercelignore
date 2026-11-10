@@ -1,0 +1,14 @@
+# ALLOWLIST: Vercel uploads ONLY what is un-ignored here. Never .env.local, .venv, data or scratch files.
+/*
+!/api
+!/server.py
+!/db.py
+!/evtime.py
+!/evenv.py
+!/dashboard_template.html
+!/calendar.html
+!/requirements.txt
+!/vercel.json
+!/supabase
+/supabase/*
+!/supabase/supabase-ca.crt
