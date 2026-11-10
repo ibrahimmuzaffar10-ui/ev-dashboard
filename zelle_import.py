@@ -1,15 +1,16 @@
 """Import Zelle payments from Eman's Chase alert emails (read-only IMAP via himalaya).
 
 Usage: python3 zelle_import.py
-Writes/updates payments.json (dedup by email id). Prints new payments.
+Writes/updates the payments (payments.json, or Supabase when EV_BACKEND=supabase). Prints new payments.
+Dedupe: new payments are keyed by the email's Message-ID, which never changes. Older ones were keyed
+by the mailbox number (which can change if the mailbox is rebuilt); their Message-IDs are remembered
+in `zelle_ids` as they are seen, so a renumbered mailbox can't import the same payment twice.
 """
 import json, os, re, subprocess, email, html
 from email import policy
 import evenv
+import db
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.expanduser(os.environ.get("EV_DATA_DIR", HERE))
-OUT = os.path.join(DATA_DIR, "payments.json")
 SENDER = evenv.need("EV_ZELLE_SENDER")  # bank alert sender
 
 def hj(*args):
@@ -34,20 +35,26 @@ def parse(t):
     return (float(amt.group(1).replace(",", "")) if amt else None, who.group(1).strip() if who else "", (memo.group(1).strip() if memo else ""))
 
 def main():
-    pays = json.load(open(OUT)) if os.path.exists(OUT) else []
-    seen = {p["email_id"] for p in pays}
+    pays = db.payments_all()
+    ids = db.doc_read("zelle_ids") or {}            # mailbox number -> Message-ID, for older payments
+    seen = {p["email_id"] for p in pays} | set(ids.values())
     envs = hj("envelope", "search", "-s", "500", f'from {SENDER} and subject "You received money with Zelle" order by date desc')["envelopes"]
-    new = []
+    new, learned = [], False
     for e in envs:
-        if e["id"] in seen: continue
+        mid = e.get("message-id") or ""
+        if e["id"] in seen:                        # an older payment: remember its permanent id
+            if mid and ids.get(e["id"]) != mid:
+                ids[e["id"]] = mid; learned = True
+            continue
+        if mid and mid in seen: continue
         raw = subprocess.run(["himalaya", "message", "read", "--raw", e["id"]], capture_output=True, timeout=120).stdout
         amount, sender, memo = parse(body_text(raw))
-        p = {"email_id": e["id"], "date": e["date"][:10], "amount": amount, "sender": sender, "memo": memo, "method": "Zelle (Chase)", "lead_id": None}
-        pays.append(p); new.append(p)
+        p = {"email_id": mid or e["id"], "date": e["date"][:10], "amount": amount, "sender": sender, "memo": memo, "method": "Zelle (Chase)", "lead_id": None}
+        pays.append(p); new.append(p); seen.add(p["email_id"])
     pays.sort(key=lambda p: p["date"], reverse=True)
     # auto-match payer name to a lead (unique full-name token match); leave unmatched for review
     try:
-        leads = json.load(open(os.path.join(DATA_DIR, "tracker_data.json")))["leads"]
+        leads = (db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json"))))["leads"]
         toks = lambda s: set(re.findall(r"[a-z]{3,}", (s or "").lower())) - {"and", "the", "via", "muhammad", "mohammad", "ali"}  # leak-check: allow: very common names excluded from fuzzy matching, not a person
         for p in pays:
             if p.get("lead_id"): continue
@@ -56,9 +63,12 @@ def main():
             if len(cands) == 1: p["lead_id"] = cands[0]["id"]; p["client"] = cands[0]["client"]
     except Exception as ex:
         print("match skipped:", ex)
-    json.dump(pays, open(OUT, "w"), indent=1)
+    db.payments_save(pays)
+    if learned:
+        db.doc_write("zelle_ids", ids)
     print(json.dumps(new, indent=1))
     print(f"{len(new)} new, {len(pays)} total")
+
 
 if __name__ == "__main__":
     main()

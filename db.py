@@ -192,7 +192,7 @@ def read_doc(name):
             return None
         if "" in st and "_key_order" not in st:
             return json.loads(st[""])
-        return {k: json.loads(st[k]) for k in json.loads(st["_key_order"])}
+        return {k: json.loads(st[k]) for k in json.loads(st["_key_order"]) if k in st}
     return _read_only(go)
 
 
@@ -359,6 +359,87 @@ def store(d):
 
     c.run("commit")                                 # before the route answers 200
     tx["done"] = True
+
+
+# ------------------------------------------------------------------ Mac jobs (watcher, Zelle import, brief)
+# Same calls in both modes: JSON files in EV_DATA_DIR, or Supabase.
+DATA_DIR = os.path.expanduser(os.environ.get("EV_DATA_DIR", HERE))
+
+
+def doc_read(name):
+    """A small state file (watch_state, brief_state, brief_latest, zelle_ids ...) or None."""
+    if CLOUD:
+        return read_doc(name)
+    p = os.path.join(DATA_DIR, name + ".json")
+    return json.load(open(p)) if os.path.exists(p) else None
+
+
+def doc_write(name, obj, **dump):
+    if CLOUD:
+        return write_doc(name, obj)
+    tmp = os.path.join(DATA_DIR, f".{name}.json.tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, **dump)
+    os.replace(tmp, os.path.join(DATA_DIR, name + ".json"))      # never a half-written file
+
+
+def payments_all():
+    if CLOUD:
+        return payments()
+    p = os.path.join(DATA_DIR, "payments.json")
+    return json.load(open(p)) if os.path.exists(p) else []
+
+
+def payments_save(pays):
+    """Replace the payments list: only changed rows are written, under the save lock."""
+    if not CLOUD:
+        return doc_write("payments", pays, indent=1)
+    import legacy
+    with locked(None):
+        c = _tls.tx["conn"]
+        have = {}
+        for r in json.loads(c.run("select coalesce(json_agg(t), '[]')::text from public.payments t")[0][0]):
+            have[r["email_id"]] = (r["position"], legacy.canon(legacy.rebuild_flat(r, legacy.PAY)))
+        keys = [p.get("email_id") for p in pays]
+        if len(keys) != len(set(keys)) or None in keys:
+            raise ValueError("payments need unique email_id")
+        gone = [k for k in have if k not in set(keys)]
+        if gone:
+            c.run("delete from public.payments where email_id = any(cast(:k as text[]))", k=gone)
+        for i, p in enumerate(pays):
+            old = have.get(p["email_id"])
+            if old and old[1] == legacy.canon(p):
+                if old[0] != i:
+                    c.run("update public.payments set position = :i where email_id = :e", i=i, e=p["email_id"])
+                continue
+            row = legacy.split_flat(p, i, legacy.PAY)
+            if old:
+                _upd(c, "payments", row, "email_id", p["email_id"])
+            else:
+                _ins(c, "payments", row)
+        c.run("commit")
+        _tls.tx["done"] = True
+
+
+def email_rows():
+    """{key: (status, attempts)} for every email the watcher has looked at (cloud)."""
+    return {k: (s, a) for k, s, a in _read_only(lambda c: c.run("select key, status, attempts from public.emails"))}
+
+
+def emails_upsert(rows):
+    """rows: [(key, folder, status, attempts)] -> emails table, one transaction."""
+    if not rows:
+        return
+    c = _connect()
+    try:
+        c.run("begin")
+        for key, folder, status, attempts in rows:
+            c.run("insert into public.emails (key, folder, status, attempts) values (:k, :f, :s, :a) "
+                  "on conflict (key) do update set folder = coalesce(excluded.folder, public.emails.folder), "
+                  "status = excluded.status, attempts = excluded.attempts", k=key, f=folder, s=status, a=attempts)
+        c.run("commit")
+    finally:
+        c.close()
 
 
 def user_is_allowed(uid):

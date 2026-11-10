@@ -42,6 +42,7 @@
 !scripts/test_phase4a.py
 !scripts/migrate_v2.py
 !scripts/verify_v2.py
+!scripts/test_step2.py
 !.githooks/pre-commit
 !.githooks/pre-push
 

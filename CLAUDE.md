@@ -37,6 +37,7 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `db.py` | Data layer: `EV_BACKEND=json` (default, files) or `supabase` (one transaction + advisory lock per save, as role `ev_server` via the pooler, verified TLS) |
 | `legacy.py` | Schema v2 ⇄ old JSON shape: one converter used by the import, the checker and the website (`legacy_shape` keeps absent keys / untypable originals) |
 | `api/index.py`, `vercel.json`, `.vercelignore` | Vercel entry: server.py behind Supabase login + allowlist, read-only (403 on saves). `.vercelignore` is an allowlist |
+| `scripts/test_step2.py` | Step 2 test: watcher/Zelle/brief on Supabase in shadow mode, failure + retry + overlap + idempotency (expect 16/16); restores Supabase exactly |
 | `scripts/migrate_v2.py`, `scripts/verify_v2.py` | Schema v2 import from a JSON snapshot (one transaction) and its exact check (expect 15/15) |
 | `evtime.py` | Houston-time `now_ct()`/`today_ct()`: every date the app writes |
 | `requirements.txt` | pg8000 + tzdata (repo `.venv` on the Mac; Vercel later) |
@@ -106,4 +107,6 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 - A role that writes the data tables needs EXECUTE on `private.j_text/j_num/j_bool` (generated columns).
 - Schema v2: v1 raw tables live in schema `archive` (not exposed). `db.store()` refuses in cloud mode until the v2 save path is built; `test_phase4a.py` predates v2.
 - Vercel rewrites send every request to `/api/index?__path=/<path>`; `api/index.py` restores the path.
+- **This Mac's clock is America/New_York**; himalaya email dates are UTC. All writes go through `evtime` (Houston). Never use `datetime.now()`/`date.today()` for stored values.
+- Mac jobs reach Supabase through `db.py` helpers (watcher/calendar via the local server's API; Zelle/brief/watch state directly). They need the repo `.venv` Python (pg8000) in cloud mode.
 - macOS TCC: launchd jobs can't read `~/Documents` files they didn't create — keep job code outside `~/Documents`.

@@ -7,15 +7,16 @@ import json, os, datetime, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import evenv  # noqa: E402  (loads .env.local)
-DATA_DIR = os.path.expanduser(os.environ.get("EV_DATA_DIR", HERE))
-DATA = json.load(open(os.path.join(DATA_DIR, "tracker_data.json")))
-PAYS = json.load(open(os.path.join(DATA_DIR, "payments.json"))) if os.path.exists(os.path.join(DATA_DIR, "payments.json")) else []
-STATE_P = os.path.join(DATA_DIR, "brief_state.json")
-st = json.load(open(STATE_P)) if os.path.exists(STATE_P) else {}
+import db  # noqa: E402  (JSON files or Supabase, per EV_BACKEND)
+DATA = db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json")))
+PAYS = db.payments_all()
+st = db.doc_read("brief_state") or {}
+SHADOW = os.environ.get("EV_SHADOW") == "1"   # test runs: no Mac pop-up
 import sys
 from zoneinfo import ZoneInfo
 ct = datetime.datetime.now(ZoneInfo("America/Chicago")).replace(tzinfo=None)
-now = datetime.datetime.now()  # machine-local, same clock as alert/changelog timestamps
+import evtime  # noqa: E402
+now = evtime.now_ct()  # Houston time, same clock as alert timestamps
 # runs hourly from the scheduler; only speaks at 7 AM and 10 PM Central (robust to the laptop's own time zone)
 if "--force" not in sys.argv and not (ct.hour in (7, 22) and ct.minute < 30): sys.exit(0)
 since = st.get("last") or (now - datetime.timedelta(hours=15)).isoformat(timespec="seconds")
@@ -90,11 +91,12 @@ text = "\n".join(out)
 print(text)
 
 st["last"] = now.isoformat(timespec="seconds"); st["pays"] = [p["email_id"] for p in PAYS]
-json.dump(st, open(STATE_P, "w"))
-json.dump({"id": now.strftime("%Y%m%d%H%M"), "at": now.isoformat(timespec="minutes"), "slot": slot, "text": text}, open(os.path.join(DATA_DIR, "brief_latest.json"), "w"), ensure_ascii=False)
+db.doc_write("brief_state", st)
+db.doc_write("brief_latest", {"id": now.strftime("%Y%m%d%H%M"), "at": now.isoformat(timespec="minutes"), "slot": slot, "text": text}, ensure_ascii=False)
 
 # pop-up on the Mac so the brief gets seen; the full brief opens first thing on the dashboard
 try:
+    if SHADOW: raise RuntimeError("shadow run: no pop-up")
     import subprocess
     summary = (f"{len(moved)} update(s)" if moved else "No new activity") + f" · {len(unans)} waiting on a reply" + (f" · {len(due)} payment(s) due" if due else "")
     subprocess.run(["osascript", "-e", f'display notification "{summary}. Open the dashboard to read it." with title "Emanant HQ" subtitle "{slot} brief ready" sound name "Glass"'], capture_output=True, timeout=10)
