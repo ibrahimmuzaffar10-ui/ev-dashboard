@@ -12,21 +12,12 @@ sys.path.insert(0, ROOT)
 import db, legacy  # noqa: E402
 
 D = os.path.expanduser(os.environ["EV_DATA_DIR"])
-JSONB = {"legacy_shape", "fields"}
-
-
 def load(f):
     with open(os.path.join(D, f + ".json"), encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def ins(c, table, row, returning=None):
-    cols = [k for k in row if k not in ("contract_id_placeholder",)]
-    vals = ", ".join(f"cast(:{k} as jsonb)" if k in JSONB else f":{k}" for k in cols)
-    params = {k: (None if row[k] is None else json.dumps(row[k], ensure_ascii=False)) if k in JSONB else row[k] for k in cols}
-    sql = f"insert into public.{table} ({', '.join(cols)}) values ({vals})" + (f" returning {returning}" if returning else "")
-    out = c.run(sql, **params)
-    return out[0][0] if returning else None
+ins = db._ins
 
 
 def main():

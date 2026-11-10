@@ -6,14 +6,14 @@ EV_BACKEND=supabase  Postgres via the Supabase pooler, as the `ev_server` role.
 Save path (supabase):  with db.locked(LOCK): d = load(); <route code>; store(d)
   * locked() opens ONE transaction and takes a transaction-level advisory lock, so saves from
     every server instance (Mac, Vercel) run one at a time, like the old threading.Lock.
-  * store() writes inserts, updates AND deletes (alert folding), then COMMITS, before the route
-    sends its 200. If the commit fails the route returns an error instead of a false success.
-  * Items are written as JSON TEXT into `json` columns (never jsonb), so key order, missing vs
-    null and 500 vs 500.0 survive exactly. No changelog (dropped 11/10).
+  * store() compares every lead/alert with what load() read and rewrites only what changed, in
+    the normalized tables (schema v2, via legacy.py), incl. deletes (alert folding); then it
+    COMMITS, before the route sends its 200. A failed commit = an error, never a false success.
+    No changelog (dropped 11/10).
   * No session state is used (no prepared statements, no session locks): safe on the
     transaction pooler (port 6543).
 """
-import json, os, ssl, threading
+import json, os, ssl, threading, time
 
 import evenv  # noqa: F401  (loads .env.local)
 
@@ -47,13 +47,22 @@ class locked:
         if not CLOUD:
             self.lock.acquire()
             return self
-        c = _connect()
-        try:
-            c.run("begin")
-            c.run("select pg_advisory_xact_lock(:k)", k=LOCK_KEY)
-        except Exception:
-            c.close()
-            raise
+        # Connecting or queueing can fail transiently under load; nothing is written yet, so one
+        # retry is safe. Any error after this point is returned to the caller, never swallowed.
+        for attempt in (1, 2):
+            c = None
+            try:
+                c = _connect()
+                c.run("begin")
+                c.run("select pg_advisory_xact_lock(:k)", k=LOCK_KEY)
+                break
+            except Exception:
+                if c is not None:
+                    try: c.close()
+                    except Exception: pass
+                if attempt == 2:
+                    raise
+                time.sleep(0.5)
         _tls.tx = {"conn": c, "snap": None, "done": False}
         return self
 
@@ -85,33 +94,63 @@ def _group(rows, key):
     return g
 
 
+# One round trip for the whole dataset (saves queue on one lock, so load time matters).
+# Ordered lists come back in position order; json values (app_state) stay text so they rebuild exactly.
+_ALL = ("select json_build_object("
+        "'clients', (select coalesce(json_agg(t), '[]') from public.clients t),"
+        "'leads', (select coalesce(json_agg(t order by t.position), '[]') from public.leads t),"
+        "'contracts', (select coalesce(json_agg(t), '[]') from public.contracts t),"
+        "'contract_plan_items', (select coalesce(json_agg(t), '[]') from public.contract_plan_items t),"
+        "'documents', (select coalesce(json_agg(t), '[]') from public.documents t),"
+        "'event_days', (select coalesce(json_agg(t), '[]') from public.event_days t),"
+        "'installments', (select coalesce(json_agg(t), '[]') from public.installments t),"
+        "'alerts', (select coalesce(json_agg(t order by t.position), '[]') from public.alerts t),"
+        "'alert_emails', (select coalesce(json_agg(t), '[]') from public.alert_emails t),"
+        "'vendors', (select coalesce(json_agg(t order by t.position), '[]') from public.vendors t),"
+        "'app_state', (select coalesce(json_agg(json_build_object('key', key, 'value', value::text)), '[]') "
+        "              from public.app_state where doc = 'tracker_data'))::text")
+
+
+def _fetch_all(c):
+    return json.loads(c.run(_ALL)[0][0])
+
+
 def _read(c):
     """Schema v2 (normalized) -> the old tracker_data shape the route code expects (see legacy.py)."""
     import legacy
-    clients = {r["client_id"]: r for r in _rows(c, "select * from public.clients")}
-    contracts = {r["lead_id"]: r for r in _rows(c, "select * from public.contracts")}
-    plan = _group(_rows(c, "select * from public.contract_plan_items"), "contract_id")
-    docs = _group(_rows(c, "select * from public.documents"), "contract_id")
-    days = _group(_rows(c, "select * from public.event_days"), "lead_id")
-    inst = _group(_rows(c, "select * from public.installments"), "lead_id")
+    T = _fetch_all(c)
+    clients = {r["client_id"]: r for r in T["clients"]}
+    contracts = {r["lead_id"]: r for r in T["contracts"]}
+    plan = _group(T["contract_plan_items"], "contract_id")
+    docs = _group(T["documents"], "contract_id")
+    days = _group(T["event_days"], "lead_id")
+    inst = _group(T["installments"], "lead_id")
     leads = []
-    for r in _rows(c, "select * from public.leads order by position"):
+    lead_rows = T["leads"]
+    for r in lead_rows:
         k = contracts.get(r["lead_id"])
         leads.append(legacy.rebuild_lead({
             "client": clients[r["client_id"]], "lead": r, "contract": k,
             "plan": plan.get(k["contract_id"], []) if k else [], "docs": docs.get(k["contract_id"], []) if k else [],
             "days": days.get(r["lead_id"], []), "installments": inst.get(r["lead_id"], [])}))
-    em = _group(_rows(c, "select * from public.alert_emails"), "alert_id")
-    alerts = [legacy.rebuild_alert(r, em.get(r["alert_id"], [])) for r in _rows(c, "select * from public.alerts order by position")]
-    vendors = [legacy.rebuild_flat(r, legacy.VENDOR) for r in _rows(c, "select * from public.vendors order by position")]
+    em = _group(T["alert_emails"], "alert_id")
+    alert_rows = T["alerts"]
+    alerts = [legacy.rebuild_alert(r, em.get(r["alert_id"], [])) for r in alert_rows]
+    vendors = [legacy.rebuild_flat(r, legacy.VENDOR) for r in T["vendors"]]
     lists = {"leads": leads, "alerts": alerts, "vendors": vendors}
-    st = {k: v for k, v in c.run("select key, value::text from public.app_state where doc = 'tracker_data'")}
+    st = {r["key"]: r["value"] for r in T["app_state"]}
     d = {}
     for k in json.loads(st.get("_key_order", "[]")):
         d[k] = lists[k] if k in lists else json.loads(st[k])
     for k, v in lists.items():
         d.setdefault(k, v)
-    return d, {}
+    # what store() needs to write only what changed
+    snap = {"lead": {r["lead_id"]: (r["position"], legacy.canon(o)) for r, o in zip(lead_rows, leads)},
+            "client_id": {r["lead_id"]: r["client_id"] for r in lead_rows},
+            "contract_id": {k: v["contract_id"] for k, v in contracts.items()},
+            "alert": {r["alert_id"]: (r["position"], legacy.canon(o)) for r, o in zip(alert_rows, alerts)},
+            "vendors": [legacy.canon(v) for v in vendors], "app": st}
+    return d, snap
 
 
 def load():
@@ -172,10 +211,154 @@ def write_doc(name, obj):
 
 
 # ------------------------------------------------------------------ writes
+JSONB = {"legacy_shape", "fields"}
+
+
+def _params(row):
+    return {k: (None if v is None else json.dumps(v, ensure_ascii=False, allow_nan=False)) if k in JSONB else v
+            for k, v in row.items()}
+
+
+def _ins(c, table, row, returning=None):
+    cols = list(row)
+    vals = ", ".join(f"cast(:{k} as jsonb)" if k in JSONB else f":{k}" for k in cols)
+    out = c.run(f"insert into public.{table} ({', '.join(cols)}) values ({vals})"
+                + (f" returning {returning}" if returning else ""), **_params(row))
+    return out[0][0] if returning else None
+
+
+def _upd(c, table, row, key, val):
+    sets = ", ".join(f"{k} = cast(:{k} as jsonb)" if k in JSONB else f"{k} = :{k}" for k in row)
+    c.run(f"update public.{table} set {sets} where {key} = :__key", __key=val, **_params(row))
+
+
+def _storage(c):
+    man = c.run("select value::text from public.app_state where doc = 'storage_manifest' and key = 'files'")
+    return {os.path.expanduser(m["source"]): m for m in (json.loads(man[0][0]) if man else [])}
+
+
+def _write_lead(c, snap, o, pos, storage):
+    import legacy
+    p = legacy.split_lead(o, pos, storage)
+    lid = p["lead"]["lead_id"]
+    if not lid:
+        raise ValueError("lead without id")
+    cid = snap["client_id"].get(lid)
+    if cid:
+        _upd(c, "clients", p["client"], "client_id", cid)
+    else:
+        cid = _ins(c, "clients", p["client"], "client_id")
+        snap["client_id"][lid] = cid
+    row = dict(p["lead"], client_id=cid)
+    if lid in snap["lead"]:
+        _upd(c, "leads", row, "lead_id", lid)
+    else:
+        _ins(c, "leads", row)
+    c.run("delete from public.event_days where lead_id = :l", l=lid)
+    c.run("delete from public.installments where lead_id = :l", l=lid)
+    kid = snap["contract_id"].get(lid)
+    if p["contract"]:
+        crow = dict(p["contract"], lead_id=lid)
+        if kid:
+            _upd(c, "contracts", crow, "contract_id", kid)
+            c.run("delete from public.contract_plan_items where contract_id = :k", k=kid)
+            c.run("delete from public.documents where contract_id = :k", k=kid)
+        else:
+            kid = _ins(c, "contracts", crow, "contract_id")
+            snap["contract_id"][lid] = kid
+        for r in p["plan"]:
+            _ins(c, "contract_plan_items", dict(r, contract_id=kid))
+        for r in p["docs"]:
+            _ins(c, "documents", dict(r, contract_id=kid))
+    elif kid:
+        c.run("delete from public.contracts where contract_id = :k", k=kid)
+        snap["contract_id"].pop(lid, None)
+        kid = None
+    for r in p["days"]:
+        _ins(c, "event_days", dict(r, lead_id=lid, contract_id=kid if r["contract_id"] is not None else None))
+    for r in p["installments"]:
+        _ins(c, "installments", dict(r, lead_id=lid, contract_id=kid))
+
+
+def _delete_lead(c, snap, lid):
+    c.run("delete from public.event_days where lead_id = :l", l=lid)
+    c.run("delete from public.installments where lead_id = :l", l=lid)
+    c.run("delete from public.contracts where lead_id = :l", l=lid)
+    c.run("delete from public.leads where lead_id = :l", l=lid)
+    c.run("delete from public.clients where client_id = :c and not exists "
+          "(select 1 from public.leads where client_id = :c)", c=snap["client_id"].get(lid))
+
+
 def store(d):
-    # Schema v2 (11/10): the write path is rebuilt for the normalized tables before cutover (Phase 4).
-    # The cloud is read-only until then (api/index.py answers 403), so this must never run.
-    raise RuntimeError("cloud saves are not available yet (schema v2 write path pending)")
+    """Write exactly what changed since load(), across the normalized tables, then COMMIT."""
+    import legacy
+    tx = getattr(_tls, "tx", None)
+    if not tx or tx["snap"] is None:
+        raise RuntimeError("store() outside a locked load()")
+    if tx["done"]:
+        raise RuntimeError("store() called twice in one request")
+    c, snap = tx["conn"], tx["snap"]
+    storage = None
+
+    leads = d.get("leads", [])
+    ids = [o.get("id") for o in leads]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate lead id")
+    for lid in [x for x in snap["lead"] if x not in set(ids)]:
+        _delete_lead(c, snap, lid)
+    for i, o in enumerate(leads):
+        old = snap["lead"].get(o.get("id"))
+        cur = legacy.canon(o)
+        if old and old[1] == cur:
+            if old[0] != i:
+                c.run("update public.leads set position = :p where lead_id = :l", p=i, l=o["id"])
+            continue
+        if storage is None:
+            storage = _storage(c)
+        _write_lead(c, snap, o, i, storage)
+
+    alerts = d.get("alerts", [])
+    aids = [a.get("id") for a in alerts]
+    if len(aids) != len(set(aids)):
+        raise ValueError("duplicate alert id")
+    gone = [x for x in snap["alert"] if x not in set(aids)]
+    if gone:
+        c.run("delete from public.alerts where alert_id = any(cast(:ids as text[]))", ids=gone)
+    for i, o in enumerate(alerts):
+        old = snap["alert"].get(o.get("id"))
+        if old and old[1] == legacy.canon(o):
+            if old[0] != i:
+                c.run("update public.alerts set position = :p where alert_id = :a", p=i, a=o["id"])
+            continue
+        row, em = legacy.split_alert(o, i)
+        if old:
+            _upd(c, "alerts", row, "alert_id", row["alert_id"])
+            c.run("delete from public.alert_emails where alert_id = :a", a=row["alert_id"])
+        else:
+            _ins(c, "alerts", row)
+        for e in em:
+            _ins(c, "alert_emails", dict(e, alert_id=row["alert_id"]))
+
+    vendors = d.get("vendors", [])
+    if [legacy.canon(v) for v in vendors] != snap["vendors"]:
+        c.run("delete from public.vendors")
+        for i, v in enumerate(vendors):
+            _ins(c, "vendors", legacy.split_flat(v, i, legacy.VENDOR))
+
+    order = [k for k in d if k != "changelog"]
+    want = {k: j(d[k]) for k in order if k not in ("leads", "alerts", "vendors")}
+    want["_key_order"] = j(order)
+    have = snap["app"]
+    for k in have:
+        if k not in want:
+            c.run("delete from public.app_state where doc = 'tracker_data' and key = :k", k=k)
+    for k, v in want.items():
+        if have.get(k) != v:
+            c.run("insert into public.app_state (doc, key, value) values ('tracker_data', :k, cast(:v as json)) "
+                  "on conflict (doc, key) do update set value = excluded.value", k=k, v=v)
+
+    c.run("commit")                                 # before the route answers 200
+    tx["done"] = True
 
 
 def user_is_allowed(uid):

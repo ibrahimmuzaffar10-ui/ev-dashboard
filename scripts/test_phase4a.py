@@ -12,6 +12,17 @@ import concurrent.futures as cf, datetime, hashlib, json, os, socket, subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import evtime  # noqa: E402
+import legacy  # noqa: E402
+
+
+def same(x, y):
+    """Same HTTP status and same content: JSON compared as data (key order ignored, Ibrahim 11/10)."""
+    if x[0] != y[0]:
+        return False
+    try:
+        return legacy.canon(json.loads(x[1])) == legacy.canon(json.loads(y[1]))
+    except ValueError:
+        return x[1] == y[1]
 
 SCRATCH = sys.argv[1]
 SNAP = os.path.join(SCRATCH, "snap")
@@ -49,13 +60,8 @@ def http(port, path, body=None):
 
 
 def db_dump():
-    """Every stored text in every data table, as one fingerprint per table (no values printed)."""
-    sql = ("select 'leads' t, string_agg(pos||':'||raw::text, E'\\n' order by pos) s from public.leads union all "
-           "select 'alerts', string_agg(pos||':'||raw::text, E'\\n' order by pos) from public.alerts union all "
-           "select 'vendors', string_agg(pos||':'||raw::text, E'\\n' order by pos) from public.vendors union all "
-           "select 'payments', string_agg(pos||':'||raw::text, E'\\n' order by pos) from public.payments union all "
-           "select 'emails', string_agg(key||status, E'\\n' order by key) from public.emails union all "
-           "select 'app_state', string_agg(doc||'/'||key||'='||value::text, E'\\n' order by doc, key) from public.app_state")
+    """Every row of every data table (minus timestamps), as one fingerprint per table (no values printed)."""
+    sql = "select 'clients' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.clients x union all select 'leads' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.leads x union all select 'event_days' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.event_days x union all select 'contracts' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.contracts x union all select 'contract_plan_items' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.contract_plan_items x union all select 'documents' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.documents x union all select 'installments' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.installments x union all select 'payments' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.payments x union all select 'alerts' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.alerts x union all select 'alert_emails' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.alert_emails x union all select 'vendors' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.vendors x union all select 'emails' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.emails x union all select 'app_state' t, coalesce(string_agg((to_jsonb(x) - 'created_at' - 'updated_at')::text, E'\\n' order by (to_jsonb(x) - 'created_at' - 'updated_at')::text), '') s from public.app_state x"
     p = subprocess.run(["supabase", "db", "query", "--linked", sql], cwd=ROOT, capture_output=True, text=True)
     s = p.stdout
     rows = json.JSONDecoder().raw_decode(s[s.index("{"):])[0]["rows"]
@@ -88,18 +94,36 @@ try:
     # ---- 2. reads identical
     for path in ("/", "/api/data", "/api/brief", "/api/calendar"):
         a, b, c = http(JSON_PORT, path), http(CLOUD_A, path), http(CLOUD_B, path)
-        check(f"GET {path}: cloud = JSON files", a == b == c and a[0] == 200, f"HTTP {a[0]}/{b[0]}/{c[0]}, {len(a[1])} bytes")
+        check(f"GET {path}: cloud = JSON files", same(a, b) and same(a, c) and a[0] == 200, f"HTTP {a[0]}/{b[0]}/{c[0]}, {len(a[1])} bytes")
 
     # ---- 3. writes identical (same TEST actions on both), incl. the alert-folding delete
     fe = "test-4a@example.invalid"  # leak-check: allow: fake .invalid test address
+    LEAD, ALERT = "@lead", "@alert"                    # filled in with the ids this run created
     steps = [("/api/add", {"client": "TEST 4a lead", "notes": "TEST"}),
-             ("/api/update", {"id": None, "field": "notes", "value": "TEST note 2"}),
+             ("/api/update", {"id": LEAD, "field": "notes", "value": "TEST note 2"}),
+             ("/api/update", {"id": LEAD, "field": "event", "value": "2026-12-05"}),
+             ("/api/update", {"id": LEAD, "field": "total", "value": "1500"}),
              ("/api/alert-new", {"email_id": "TEST-4a-e1", "from_email": fe, "type": "email", "title": "TEST 4a alert 1",
                                  "detail": "TEST", "at": "2026-11-10T09:00"}),
              ("/api/alert-new", {"email_id": "TEST-4a-e2", "from_email": fe, "type": "inquiry", "title": "TEST 4a new lead",
                                  "detail": "TEST", "at": "2026-11-10T09:05",
                                  "create_lead": {"client": "TEST 4a fold", "src_email": fe, "channel": "Website form"}}),
-             ("/api/alert", {"id": None, "action": "done"})]
+             ("/api/alert-new", {"email_id": "TEST-4a-e3", "from_email": fe, "type": "email", "title": "TEST 4a merged",
+                                 "detail": "TEST merge", "at": "2026-11-10T09:10"}),
+             ("/api/alert-meta", {"TEST-4a-e2": False}),
+             ("/api/alert", {"id": ALERT, "action": "ignore"}),
+             ("/api/alert", {"id": ALERT, "action": "undo"}),
+             ("/api/alert", {"id": ALERT, "action": "done"}),
+             ("/api/schedule", {"id": LEAD, "action": "add", "label": "TEST deposit", "due": "2026-12-01", "amount": 500, "paid": False}),
+             ("/api/schedule", {"id": LEAD, "action": "add", "label": "TEST final", "due": "2027-01-15", "amount": 300}),
+             ("/api/schedule", {"id": LEAD, "action": "update", "index": 0, "amount": 650, "paid": False}),
+             ("/api/pay", {"id": LEAD, "index": 0}),
+             ("/api/schedule", {"id": LEAD, "action": "delete", "index": 1}),
+             ("/api/finance", {"field": "collected_2026_manual", "value": 12345}),
+             ("/api/brief-ack", {"id": "TEST-brief"})]
+    # two real settings get touched: keep their stored text and put it back afterwards
+    rc, out = sql("select doc, key, value::text as v from public.app_state where (doc = 'tracker_data' and key in ('finance', 'ignore_senders', '_key_order')) or doc = 'brief_ack'")
+    saved_state = json.JSONDecoder().raw_decode(out[out.index("{"):])[0]["rows"]
     made = {"leads": set(), "alerts": set()}
     folded = None
     for port in (JSON_PORT, CLOUD_A):
@@ -107,11 +131,11 @@ try:
         outs = []
         for path, body in steps:
             body = dict(body)
-            if path == "/api/update": body["id"] = last["lead"]
-            if path == "/api/alert": body["id"] = last["alert"]
+            if body.get("id") == LEAD: body["id"] = last["lead"]
+            if body.get("id") == ALERT: body["id"] = last["alert"]
             st, raw = http(port, path, body)
             r = json.loads(raw) if st == 200 else {}
-            if r.get("lead"): last["lead"] = r["lead"]["id"]
+            if r.get("lead") and path in ("/api/add", "/api/alert-new"): last.setdefault("lead", r["lead"]["id"])
             if r.get("alert"): last["alert"] = r["alert"]["id"]
             if path == "/api/alert-new" and body["email_id"] == "TEST-4a-e1": first_alert = r["alert"]["id"]
             outs.append((st, raw))
@@ -120,24 +144,26 @@ try:
                 if r.get("alert"): made["alerts"].add(r["alert"]["id"])
         if port == JSON_PORT: json_outs = outs
         else: cloud_outs, folded = outs, first_alert
-    check("5 TEST writes: same answers (cloud = JSON)", json_outs == cloud_outs and all(s == 200 for s, _ in cloud_outs),
-          f"{sum(s == 200 for s, _ in cloud_outs)}/5 OK")
+    check(f"{len(steps)} TEST saves (every saving route): same answers (cloud = JSON)", all(same(x, y) for x, y in zip(json_outs, cloud_outs)) and all(s == 200 for s, _ in cloud_outs),
+          f"{sum(s == 200 for s, _ in cloud_outs)}/{len(steps)} OK")
     a, b = http(JSON_PORT, "/api/data"), http(CLOUD_A, "/api/data")
-    check("after writes: /api/data cloud = JSON", a == b)
-    rc, out = sql(f"select count(*) as n from public.alerts where id = '{folded}'")
+    check("after writes: /api/data cloud = JSON", same(a, b))
+    rc, out = sql(f"select count(*) as n from public.alerts where alert_id = '{folded}'")
     check("fold-alerts path deleted the folded alert in Supabase", '"n": 0' in out)
 
     # ---- 4. 20 parallel saves across two server processes (Mac + 'Vercel' clock)
     def add(i):
         st, raw = http((CLOUD_A, CLOUD_B)[i % 2], "/api/add", {"client": f"TEST 4a parallel {i:02d}"})
+        if st != 200: errors.append(raw.decode("utf-8", "replace")[:160])
         return st, json.loads(raw)["lead"]["id"] if st == 200 else None
+    errors = []
     with cf.ThreadPoolExecutor(20) as ex:
         res = list(ex.map(add, range(20)))
     ids = [i for s, i in res if i]
     made["leads"].update(ids)
-    check("20 parallel saves: all succeeded", len(ids) == 20, f"{len(ids)}/20")
+    check("20 parallel saves: all succeeded", len(ids) == 20, f"{len(ids)}/20 " + " | ".join(errors))
     check("20 parallel saves: 0 duplicate IDs", len(set(ids)) == len(ids))
-    rc, out = sql("select count(*) as n from public.leads where client like 'TEST 4a parallel %'")
+    rc, out = sql("select count(*) as n from public.leads l join public.clients c using (client_id) where c.name like 'TEST 4a parallel %'")
     check("20 parallel saves: 0 lost (all 20 in Supabase)", '"n": 20' in out, out[out.find('"n"'):][:10])
 
     # ---- 5. the server's database login is limited
@@ -165,10 +191,18 @@ finally:
     if made["leads"] or made["alerts"]:
         L = ",".join(f"'{x}'" for x in sorted(made["leads"]) if x.startswith("L"))
         A = ",".join(f"'{x}'" for x in sorted(made["alerts"]) if x.startswith("A"))
-        rc, out = sql("begin; " + (f"delete from public.leads where id in ({L}) and client like 'TEST%'; " if L else "")
-            + (f"delete from public.alerts where id in ({A}) and raw->>'title' like 'TEST%'; " if A else "")
-            + "delete from public.alerts where email_id like 'TEST-4a-%'; commit;")
+        ids = f"({L})" if L else "('')"
+        aids = f"({A})" if A else "('')"
+        rc, out = sql("begin; "
+            f"delete from public.alerts where alert_id in {aids} or title like 'TEST 4a%'; "
+            f"delete from public.event_days where lead_id in {ids}; delete from public.installments where lead_id in {ids}; "
+            f"delete from public.contracts where lead_id in {ids}; "
+            f"delete from public.leads l using public.clients c where l.client_id = c.client_id and l.lead_id in {ids} and c.name like 'TEST%'; "
+            "delete from public.clients c where c.name like 'TEST 4a%' and not exists (select 1 from public.leads l where l.client_id = c.client_id); "
+            "commit;")
         if rc: check("cleanup: TEST rows removed", False, out[-200:])
+    for r in (saved_state if "saved_state" in dir() else []):
+        sql("update public.app_state set value = cast($ev$" + r["v"] + "$ev$ as json) where doc = '" + r["doc"] + "' and key = '" + r["key"] + "'")
     try:
         check("cleanup: Supabase identical to before the test", db_dump() == before)
     except NameError:

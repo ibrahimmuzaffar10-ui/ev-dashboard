@@ -55,14 +55,16 @@ def dec(kind, v):
         return None
     if kind in ("text", "bool", "int", "json"):
         return v
-    if kind == "date":
-        return v.isoformat()
-    if kind == "money_int":
-        d = Decimal(v)
+    if kind == "date":                                        # date object, or 'YYYY-MM-DD' from a json read
+        return v.isoformat() if hasattr(v, "isoformat") else str(v)[:10]
+    if kind in ("money_int", "money_float"):
+        d = Decimal(repr(v)) if isinstance(v, float) else Decimal(v)
+        if kind == "money_float":
+            return float(d)
         return int(d) if d == d.to_integral_value() else float(d)
-    if kind == "money_float":
-        return float(Decimal(v))
     if kind == "at":
+        if isinstance(v, str):
+            v = datetime.datetime.fromisoformat(v)
         return v.astimezone(evtime.CT).strftime("%Y-%m-%d %H:%M")
     raise ValueError(kind)
 
@@ -140,7 +142,7 @@ def rebuild_lead(p):
     d = dec_flat(p["client"], CLIENT)
     d.update(dec_flat(p["lead"], LEAD))
     days = sorted(p["days"], key=lambda r: r["position"])
-    d["event"] = days[0]["day"].isoformat() if days and days[0]["day"] else None
+    d["event"] = dec("date", days[0]["day"]) if days and days[0]["day"] else None
     if p["installments"]:
         d["schedule"] = [rebuild_flat(r, INST) for r in sorted(p["installments"], key=lambda r: r["position"])]
     c = p["contract"]
