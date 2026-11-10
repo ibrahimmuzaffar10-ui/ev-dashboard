@@ -55,8 +55,8 @@ Files: `supabase/migrations/20261110000000_schema_v1.sql`, codec `db_codec.py`.
 |---|---|---|---|
 | `leads` | `tracker_data.leads` | `id` (`L###`) | 28 typed columns + `contract_terms`, `schedule` as json (split in Stage 4) |
 | `alerts` | `tracker_data.alerts` | `id` (`A####`) | `email_id` **unique** (alert-new idempotency); `count` default 1; `email_ids` default `[]` |
-| `vendors` | `tracker_data.vendors` | `pos` | no id in the JSON |
-| `payments` | `payments.json` | `pos` | `email_id` unique (Zelle dedupe) |
+| `vendors` | `tracker_data.vendors` | `row_id` (internal) | no id in the JSON |
+| `payments` | `payments.json` | `row_id` (internal) | `email_id` unique (Zelle dedupe); the import re-sorts the list, so list position can't be the key |
 | `changelog` | `tracker_data.changelog` | `seq` | **insert-only** (trigger blocks update/delete, even for the owner) |
 | `seen_emails` | `watch_state.seen` | `key` | |
 | `app_state` | every other value: finance, ignore/watch senders, schema, generated, watch_state since/last_ok, brief files | (`doc`, `key`) | json value per top-level key |
