@@ -78,6 +78,7 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `~/.hermes/skills/productivity/small-business-operations/SKILL.md` | Full business + dashboard context (lead fields, status codes, alert rules, pricing rules) |
 | `~/Documents/Obsidian Vault/Projects/Emanant Visuals/Dashboard Spec.md` | Dashboard requirements (views, color code) |
 | `~/Documents/Obsidian Vault/Decisions/Emanant HQ on free cloud stack.md` | Stack decision record |
+| `~/.claude/skills/hormozi-growth-playbook/`, `~/.claude/skills/small-business-operations/` | Claude skills copied from Hermes 11/10 (Alex Hormozi growth playbook; business operations). Originals stay in `~/.hermes/skills/productivity/` and the vault's `Knowledge/Hormozi Playbook/` |
 | `~/.hermes/venvs/ev/bin/python` | Python with python-docx, reportlab, pypdfium2 (renderers + render tests) |
 
 ## Accounts & tools (already set up on this Mac)
