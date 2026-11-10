@@ -3,6 +3,7 @@
 !/api
 !/server.py
 !/db.py
+!/legacy.py
 !/evtime.py
 !/evenv.py
 !/dashboard_template.html

@@ -3,9 +3,9 @@
 Read this first, then `docs/ROADMAP.md` (the plan and the source of truth for status).
 
 ## What this is
-Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-person Houston wedding photography business: Eman shoots, Ibrahim (the user) runs the business. Today it runs **locally on Ibrahim's Mac** (Python stdlib server on `localhost:8787`, JSON files as the database). We are migrating it to **GitHub (this public repo) + Vercel Hobby (free) + Supabase Free**, phase by phase, per `docs/ROADMAP.md`. Mail/Zelle/brief/calendar syncs stay on the Mac permanently; a Next.js mobile-first rebuild comes later (Stage 3).
+Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-person Houston wedding photography business: Eman (spelled E-m-a-n) shoots, Ibrahim (the user) runs the business. Today it runs **locally on Ibrahim's Mac** (Python stdlib server on `localhost:8787`, JSON files as the database). We are migrating it to **GitHub (this public repo) + Vercel Hobby (free) + Supabase Free**, phase by phase, per `docs/ROADMAP.md`. Mail/Zelle/brief/calendar syncs stay on the Mac permanently; a Next.js mobile-first rebuild comes later (Stage 3).
 
-**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · Phase 2 ✅ (schema v1; live test 92/92) · Phase 3 ✅ (data + 23 files copied, verified exact; Mac still live) · Phase 4a ✅ (server on Supabase, 19/19) · **Next: 4b job routes, 4c outbox, 4d renderer/errors.**
+**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · Phase 2 ✅ (schema v1; live test 92/92) · Phase 3 ✅ (data + 23 files copied, verified exact; Mac still live) · Phase 4a ✅ · **Live (read-only, login) at https://ev-dashboard-tan.vercel.app** · **Schema v2 normalized** (verify 15/15) · **Next: v2 save path, then 4b job routes, 4c outbox, 4d renderer/errors.**
 
 ## Hard rules (from Ibrahim — never break)
 1. **Never delete or move existing files** in `~/EmanantHQ`, `~/Documents/Emanant Visuals`, or the Obsidian vault. Copy, don't move. Edits happen in this repo only. Scratch files you create yourself may be deleted (and must be, if they contain client data).
@@ -35,6 +35,9 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `zelle_import.py`, `brief.py`, `calendar_sync.py` | Zelle payment import, twice-daily brief, iCloud calendar sync (AppleScript) |
 | `contracts/render_contract.py`, `contracts/render_questionnaire.py` | DOCX/PDF renderers (python-docx + reportlab); contract wording is loaded from outside the repo |
 | `db.py` | Data layer: `EV_BACKEND=json` (default, files) or `supabase` (one transaction + advisory lock per save, as role `ev_server` via the pooler, verified TLS) |
+| `legacy.py` | Schema v2 ⇄ old JSON shape: one converter used by the import, the checker and the website (`legacy_shape` keeps absent keys / untypable originals) |
+| `api/index.py`, `vercel.json`, `.vercelignore` | Vercel entry: server.py behind Supabase login + allowlist, read-only (403 on saves). `.vercelignore` is an allowlist |
+| `scripts/migrate_v2.py`, `scripts/verify_v2.py` | Schema v2 import from a JSON snapshot (one transaction) and its exact check (expect 15/15) |
 | `evtime.py` | Houston-time `now_ct()`/`today_ct()`: every date the app writes |
 | `requirements.txt` | pg8000 + tzdata (repo `.venv` on the Mac; Vercel later) |
 | `evenv.py` | Loads `.env.local` into `os.environ` (stdlib) |
@@ -100,4 +103,6 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 - Live-code facts the schema/data layer must respect (from the adversarial review — details in `docs/ROADMAP.md`): `watch.py` marks emails seen **before** posting; IDs are `max+1` under a process-local `threading.LOCK`; `store()` must also write deletes (alert folding) and the changelog is insert-only; `brief.py`/`zelle_import.py`/`watch.py` write JSON files directly; optional keys are often **missing** (not null) and code relies on `.get(k, default)`; dates are text with `''` and nulls; Vercel's clock is UTC (use America/Chicago).
 - The Supabase DB certificate is not in the Mac trust store: always pass `supabase/supabase-ca.crt`; never disable verification. The pooler host is `aws-1-us-east-1` (aws-0 says tenant not found).
 - A role that writes the data tables needs EXECUTE on `private.j_text/j_num/j_bool` (generated columns).
+- Schema v2: v1 raw tables live in schema `archive` (not exposed). `db.store()` refuses in cloud mode until the v2 save path is built; `test_phase4a.py` predates v2.
+- Vercel rewrites send every request to `/api/index?__path=/<path>`; `api/index.py` restores the path.
 - macOS TCC: launchd jobs can't read `~/Documents` files they didn't create — keep job code outside `~/Documents`.

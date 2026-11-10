@@ -1,4 +1,4 @@
-"""Data layer for server.py.
+"""Data layer for server.py. (Supabase reads use schema v2 since 11/10; see legacy.py.)
 
 EV_BACKEND=json      (default) today's JSON files, unchanged.
 EV_BACKEND=supabase  Postgres via the Supabase pooler, as the `ev_server` role.
@@ -20,8 +20,6 @@ import evenv  # noqa: F401  (loads .env.local)
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.environ.get("EV_BACKEND", "json")
 CLOUD = BACKEND == "supabase"
-LISTS = ("leads", "vendors", "alerts")
-KEYED = {"leads": "id", "alerts": "id"}            # vendors have no id: rewritten as a whole
 LOCK_KEY = 0x45564851                              # 'EVHQ'
 _tls = threading.local()
 
@@ -74,25 +72,46 @@ class locked:
 
 
 # ------------------------------------------------------------------ reads
+def _rows(c, sql, **kw):
+    out = c.run(sql, **kw)
+    cols = [x["name"] for x in c.columns]
+    return [dict(zip(cols, r)) for r in out]
+
+
+def _group(rows, key):
+    g = {}
+    for r in rows:
+        g.setdefault(r[key], []).append(r)
+    return g
+
+
 def _read(c):
-    snap, d_lists = {}, {}
-    for t in LISTS:
-        rows = c.run(f"select pos, raw::text from public.{t} order by pos")
-        items = [json.loads(r) for _, r in rows]
-        d_lists[t] = items
-        if t in KEYED:
-            snap[t] = {o[KEYED[t]]: (p, r) for (p, r), o in zip(rows, items)}
-        else:
-            snap[t] = [r for _, r in rows]
+    """Schema v2 (normalized) -> the old tracker_data shape the route code expects (see legacy.py)."""
+    import legacy
+    clients = {r["client_id"]: r for r in _rows(c, "select * from public.clients")}
+    contracts = {r["lead_id"]: r for r in _rows(c, "select * from public.contracts")}
+    plan = _group(_rows(c, "select * from public.contract_plan_items"), "contract_id")
+    docs = _group(_rows(c, "select * from public.documents"), "contract_id")
+    days = _group(_rows(c, "select * from public.event_days"), "lead_id")
+    inst = _group(_rows(c, "select * from public.installments"), "lead_id")
+    leads = []
+    for r in _rows(c, "select * from public.leads order by position"):
+        k = contracts.get(r["lead_id"])
+        leads.append(legacy.rebuild_lead({
+            "client": clients[r["client_id"]], "lead": r, "contract": k,
+            "plan": plan.get(k["contract_id"], []) if k else [], "docs": docs.get(k["contract_id"], []) if k else [],
+            "days": days.get(r["lead_id"], []), "installments": inst.get(r["lead_id"], [])}))
+    em = _group(_rows(c, "select * from public.alert_emails"), "alert_id")
+    alerts = [legacy.rebuild_alert(r, em.get(r["alert_id"], [])) for r in _rows(c, "select * from public.alerts order by position")]
+    vendors = [legacy.rebuild_flat(r, legacy.VENDOR) for r in _rows(c, "select * from public.vendors order by position")]
+    lists = {"leads": leads, "alerts": alerts, "vendors": vendors}
     st = {k: v for k, v in c.run("select key, value::text from public.app_state where doc = 'tracker_data'")}
-    snap["app"] = st
-    order = json.loads(st.get("_key_order", "[]"))
     d = {}
-    for k in order:
-        d[k] = d_lists[k] if k in LISTS else json.loads(st[k])
-    for t in LISTS:                                 # a list missing from _key_order still loads
-        d.setdefault(t, d_lists[t])
-    return d, snap
+    for k in json.loads(st.get("_key_order", "[]")):
+        d[k] = lists[k] if k in lists else json.loads(st[k])
+    for k, v in lists.items():
+        d.setdefault(k, v)
+    return d, {}
 
 
 def load():
@@ -122,7 +141,8 @@ def _read_only(fn):
 
 
 def payments():
-    return _read_only(lambda c: [json.loads(r) for (r,) in c.run("select raw::text from public.payments order by pos")])
+    import legacy
+    return _read_only(lambda c: [legacy.rebuild_flat(r, legacy.PAY) for r in _rows(c, "select * from public.payments order by position")])
 
 
 def read_doc(name):
@@ -153,48 +173,9 @@ def write_doc(name, obj):
 
 # ------------------------------------------------------------------ writes
 def store(d):
-    tx = getattr(_tls, "tx", None)
-    if not tx or tx["snap"] is None:
-        raise RuntimeError("store() outside a locked load()")
-    if tx["done"]:
-        raise RuntimeError("store() called twice in one request")
-    c, snap = tx["conn"], tx["snap"]
-
-    for t, key in KEYED.items():
-        new = [(o[key], i, j(o)) for i, o in enumerate(d.get(t, []))]
-        ids = [k for k, _, _ in new]
-        if len(ids) != len(set(ids)):
-            raise ValueError(f"duplicate {t} id")
-        old, keep = snap[t], set(ids)
-        gone = [k for k in old if k not in keep]
-        if gone:
-            c.run(f"delete from public.{t} where id = any(cast(:ids as text[]))", ids=gone)
-        for k, i, txt in new:
-            if k not in old:
-                c.run(f"insert into public.{t} (pos, raw) values (:p, cast(:r as json))", p=i, r=txt)
-            elif old[k] != (i, txt):
-                c.run(f"update public.{t} set pos = :p, raw = cast(:r as json) where id = :k", p=i, r=txt, k=k)
-
-    vendors = [j(o) for o in d.get("vendors", [])]
-    if vendors != snap["vendors"]:
-        c.run("delete from public.vendors")
-        for i, txt in enumerate(vendors):
-            c.run("insert into public.vendors (pos, raw) values (:p, cast(:r as json))", p=i, r=txt)
-
-    order = [k for k in d if k != "changelog"]
-    want = {k: j(d[k]) for k in order if k not in LISTS}
-    want["_key_order"] = j(order)
-    have = snap["app"]
-    for k in have:
-        if k not in want:
-            c.run("delete from public.app_state where doc = 'tracker_data' and key = :k", k=k)
-    for k, v in want.items():
-        if have.get(k) != v:
-            c.run("insert into public.app_state (doc, key, value) values ('tracker_data', :k, cast(:v as json)) "
-                  "on conflict (doc, key) do update set value = excluded.value", k=k, v=v)
-
-    c.run("commit")                                 # before the route answers 200
-    tx["done"] = True
+    # Schema v2 (11/10): the write path is rebuilt for the normalized tables before cutover (Phase 4).
+    # The cloud is read-only until then (api/index.py answers 403), so this must never run.
+    raise RuntimeError("cloud saves are not available yet (schema v2 write path pending)")
 
 
 def user_is_allowed(uid):
