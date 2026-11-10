@@ -13,10 +13,10 @@ begin
     (ok_u, 'authenticated', 'authenticated', 'ok@example.invalid'), -- leak-check: allow: fake .invalid test address
     (st_u, 'authenticated', 'authenticated', 'st@example.invalid'); -- leak-check: allow: fake .invalid test address
   insert into private.app_users (user_id, label) values (ok_u, 'TEST');
-  insert into public.leads (pos, raw) values (0, '{"id": "L999", "client": "TEST lead"}');
-  insert into public.alerts (pos, raw) values (0, '{"id": "A9999", "title": "TEST alert"}');
-  insert into public.vendors (pos, raw) values (0, '{"name": "TEST vendor"}');
-  insert into public.payments (pos, raw) values (0, '{"email_id": "TEST-1"}');
+  insert into public.leads (pos, raw) values (-1, '{"id": "L999", "client": "TEST lead"}');
+  insert into public.alerts (pos, raw) values (-1, '{"id": "A9999", "title": "TEST alert"}');
+  insert into public.vendors (pos, raw) values (-1, '{"name": "TEST vendor"}');
+  insert into public.payments (pos, raw) values (-1, '{"email_id": "TEST-1"}');
   insert into public.emails (key) values ('TEST-key');
   insert into public.app_state (doc, key, value) values ('TEST', 'TEST', '{}');
   insert into public.settings (key, value) values ('TEST', '"x"');

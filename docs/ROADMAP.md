@@ -67,6 +67,21 @@ File: `supabase/migrations/20261110000000_schema_v1.sql`. Revised 11/10 after an
 - **Security:** RLS + FORCE RLS on every table. `anon`: no privileges. `authenticated`: SELECT only, and only if the user ID is on the allowlist. **No write policies** (read-only until Phase 7). Future tables and functions are closed until granted on purpose.
 - **Not in v1 on purpose:** a changelog (dropped) · enum checks and the alert→lead link (the live data may hold values the code never wrote) · outbox / heartbeat / job tables (Phase 4).
 
+### Phase 3 plan (data migration) — 11/10
+Goal: every byte of data in Supabase, nothing lost, nothing changed on the Mac. The Mac stays the live system; the cloud copy is a rehearsal that is reloaded at cutover (Phase 7).
+
+| Step | How | Guard |
+|---|---|---|
+| 1. Freeze | Copy (never move) the 6 JSON files to a scratch snapshot; every later step uses the snapshot | Watcher writes every 5 min and 3 files have no safe-save: each copy must parse, else re-copy |
+| 2. Pre-check | `profile_keys.py` on the snapshot | **0** blockers |
+| 3. Load data | `migrate_data.py` → one SQL transaction: replace leads/alerts/vendors/payments/emails/app_state (re-runnable; all-or-nothing) | Each item stored as JSON **text** in a `json` column (exact). NaN/NUL refused |
+| 4. Verify data | `verify_migration.py` rebuilds every file **from Supabase** and compares to the snapshot as text, unsorted | Counts exact · stored text byte-identical · rebuilt files identical (tracker_data minus changelog) · generated columns sane |
+| 5. Files | `migrate_files.py`: 23 files (drafts 10, signed 2, templates 4+4, pending 3) → bucket `contracts`, explicit content type, ASCII names (`–` → `-`) | Download each back: **SHA-256 identical** · manifest (original path → key, sha256, bytes) in `app_state` |
+| 6. Still locked | Re-run anon live test + `rls_sim_live.sql` with real data present | anon **34/34** · stand-in **58/58** · allowlist still empty, so nobody can read via the API |
+| 7. Clean up | Delete the scratch snapshot, SQL and downloads (client data) | `ls` shows them gone |
+
+**Changes from the earlier plan (Claude 11/10):** (a) file paths inside lead records are **not** rewritten: rewriting would break "exactly as in the JSON"; the manifest maps old path → Storage key and Phase 4 uses it. (b) Storage mirrors the folders (`drafts/`, `signed/`, …) instead of `leads/<id>/`: only 3 leads reference files, so sorting by lead would mean guessing. (c) `contract_final_content.py` is not uploaded now: the bucket accepts only PDF/DOCX/JSON and only the cloud renderer (Phase 4/5) needs it. (d) `backups/` stays for Phase 7.
+
 ---
 
 ## Stage 2: Harden the local syncs
@@ -114,6 +129,7 @@ Split `schedule` + `contract_terms` into tables · custom domain `hq.emanantvisu
 | Changelog | ✅ **Not migrated, no table** (Ibrahim 11/10). The brief loses its "dashboard edits" lines; the old entries stay in the JSON on the Mac |
 | Seen list → `emails` table with a status | ✅ Ibrahim 11/10 |
 | Store each item exactly as in the JSON + generated columns | ✅ Applied 11/10 (Ibrahim: "keep going"). Proposed by Claude, **replaces my first draft** (typed columns + key-order/extra bookkeeping), after the adversarial review found a blocker and two exactness bugs in it |
+| Phase 3: lead file paths not rewritten (manifest instead); Storage mirrors folders; contract wording file waits for Phase 4/5 | ✅ Claude 11/10 (Ibrahim: "go ahead") |
 | Storage test = "anon GET ≠ 200" instead of "= 403" | ⏳ Proposed 11/10. Supabase answers 400/404 for private objects |
 | Extra MFA rule inside the database | ✅ **No** (Ibrahim 11/10): Supabase's own MFA setting is enough; don't build what isn't needed |
 
@@ -152,6 +168,7 @@ Split `schedule` + `contract_terms` into tables · custom domain `hq.emanantvisu
 | Tests counted any error as "refused" | Every refusal must be SQLSTATE 42501 |
 
 ## Status log
+- 2026-11-10 — **Phase 3 passed (rehearsal copy; the Mac stays live).** Snapshot of the 6 JSON files (all parse) → `profile_keys.py` 0 blockers → `migrate_data.py` one transaction: leads 116, vendors 40, alerts 28, payments 37, emails 874, app_state 20 (changelog 270 skipped). `verify_migration.py` **28/28**: counts exact, stored text byte-identical for all 221 items, every file rebuilt from Supabase identical to the snapshot (tracker_data minus changelog), generated-column NULLs match (total 86, paid 87, alert lead_id 15). Verifier proven to fail on a planted key-order swap, 500→500.0 and missing→null (3/3 caught). Files: `migrate_files.py` 23/23 uploaded, downloaded back, **SHA-256 identical**; correct types 23/23; manifest in app_state. Links: alerts→leads 13/13 and payments→leads 17/17 resolve (0 broken; not enforced by design). Still locked with real data: anon 34/34, stand-in users 58/58, allowlist empty. Scratch copies deleted; Mac files untouched. Next: Phase 4.
 - 2026-11-10 — **Phase 2 passed.** Email auth provider turned on (Ibrahim); probe: fake login → 400 invalid_credentials, sign-up still 422. Signed-in checks run inside the database instead of with real test accounts (Ibrahim: no test users/PDF needed): `supabase/tests/rls_sim_live.sql` adds a stand-in allowlisted user, a stand-in stranger, one TEST row per table and a stand-in contract file, then rolls everything back → **58/58** (allowlisted sees every table + the file; stranger sees 0; both refused on insert/update/delete with 42501). Afterwards: 0 users, 0 allowlist, 0 files, 0 rows. With the anon part (34/34): **92/92, 0 fails**. Next: Phase 3 (data migration).
 - 2026-11-10 — **Phase 2 applied; live test partly done.** Run on the Mac. `profile_keys.py` on the live JSON: **0** blockers, 0 notes (leads 116, alerts 28, vendors 40, payments 37, seen 874). `postgres` rolbypassrls = **true**. Dry run → 1 migration; `supabase db push` applied `20261110000000_schema_v1`. Checked in the DB: 7 tables, RLS + FORCE RLS on each, 1 read policy each, anon has no SELECT, authenticated has no write grants, `private` schema + `is_allowed()` closed to anon, bucket `contracts` private (25 MB, 3 types), allowlist empty. Live test with seed: anon part **34/34** (all reads/writes 401, private function 404, Storage ≠ 200, sign-up 422); seed removed (0 rows left). Local `rls_test.sql` not re-run on the Mac (no Postgres here); it passed 113/113 on this same commit in the cloud session. Dashboard check (Chrome): region us-east-1, sign-ups off, anonymous off, email confirm on, TOTP on, 0 users.
 - 2026-11-10 — **Phase 2 revised, not applied.** Ibrahim: drop the changelog; seen list → `emails` table with a status. Adversarial review (15 findings: 1 blocker, 2 high) → redesign: each item kept exactly in `raw` json with generated columns (codec removed). Local tests on Postgres 16 with a Supabase stand-in: **113/113**; 3 deliberately broken versions (allowlist bypassed, future-function lock removed, write grant added) each caught. Live-test logic against a fake server: 100/100. Leak check 0 hits (generic only; name check + gitleaks need the Mac).
