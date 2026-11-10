@@ -232,9 +232,18 @@ def _upd(c, table, row, key, val):
     c.run(f"update public.{table} set {sets} where {key} = :__key", __key=val, **_params(row))
 
 
+def storage_index(manifest):
+    """File registry entries by record path, in both the '~/...' and the expanded form."""
+    idx = {}
+    for m in manifest or []:
+        idx[m["source"]] = m
+        idx[os.path.expanduser(m["source"])] = m
+    return idx
+
+
 def _storage(c):
     man = c.run("select value::text from public.app_state where doc = 'storage_manifest' and key = 'files'")
-    return {os.path.expanduser(m["source"]): m for m in (json.loads(man[0][0]) if man else [])}
+    return storage_index(json.loads(man[0][0]) if man else [])
 
 
 def _write_lead(c, snap, o, pos, storage):
@@ -440,6 +449,50 @@ def emails_upsert(rows):
         c.run("commit")
     finally:
         c.close()
+
+
+# ------------------------------------------------------------------ files (step 4)
+def file_put(key, content_type, data, record=None):
+    """Save a file's bytes; with `record`, also add/replace its entry in the file registry.
+    Inside a save it joins that transaction (saved only if the save commits)."""
+    import hashlib
+    sha = hashlib.sha256(data).hexdigest()
+    tx = getattr(_tls, "tx", None)
+    own = not (tx and not tx["done"])
+    c = _connect() if own else tx["conn"]
+    try:
+        if own:
+            c.run("begin")
+        c.run("insert into public.files (file_key, content_type, data, sha256, bytes) values (:k, :t, :d, :h, :n) "
+              "on conflict (file_key) do update set content_type = excluded.content_type, data = excluded.data, "
+              "sha256 = excluded.sha256, bytes = excluded.bytes", k=key, t=content_type, d=data, h=sha, n=len(data))
+        if record:
+            got = c.run("select value::text from public.app_state where doc = 'storage_manifest' and key = 'files' for update")
+            man = [m for m in (json.loads(got[0][0]) if got else []) if m.get("source") != record and m.get("key") != key]
+            man.append({"source": record, "key": key, "sha256": sha, "bytes": len(data), "type": content_type})
+            c.run("insert into public.app_state (doc, key, value) values ('storage_manifest', 'files', cast(:v as json)) "
+                  "on conflict (doc, key) do update set value = excluded.value", v=j(man))
+        if own:
+            c.run("commit")
+    except Exception:
+        if own:
+            c.run("rollback")
+        raise
+    finally:
+        if own:
+            c.close()
+    return sha
+
+
+def file_get(key):
+    """(content_type, bytes) or None."""
+    got = _read_only(lambda c: c.run("select content_type, data from public.files where file_key = :k", k=key))
+    return (got[0][0], bytes(got[0][1])) if got else None
+
+
+def file_registry():
+    got = _read_only(lambda c: c.run("select value::text from public.app_state where doc = 'storage_manifest' and key = 'files'"))
+    return json.loads(got[0][0]) if got else []
 
 
 # ------------------------------------------------------------------ email outbox (step 3)

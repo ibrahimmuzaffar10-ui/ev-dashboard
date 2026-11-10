@@ -39,6 +39,10 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `api/index.py`, `vercel.json`, `.vercelignore` | Vercel entry: server.py behind Supabase login + allowlist, read-only (403 on saves). `.vercelignore` is an allowlist |
 | `mailer.py`, `outbox_send.py` | Email: one builder/sender; cloud mode queues in `outbox` (same transaction as the save), the Mac sender sends (never re-sends an interrupted email) |
 | `scripts/test_step3.py` | Step 3 test: outbox, dry run (expect 13/13) |
+| `docstore.py`, `docs_sync.py`, `scripts/load_files.py` | Contract files: `files` table + registry (cloud), Mac copy into Documents (never overwrites/deletes), loader for existing files + wording |
+| `scripts/test_step4.py` | Step 4 test: contracts online (expect 14/14) |
+| `deploy/launchd.py` | Installs/removes the Mac background jobs: `shadow` (step 5) or `prod` (cutover); keeps the originals |
+| `scripts/shadow_compare.py` | Step 5: record the start, then compare shadow (Supabase) vs live after 48 h |
 | `scripts/test_step2.py` | Step 2 test: watcher/Zelle/brief on Supabase in shadow mode, failure + retry + overlap + idempotency (expect 16/16); restores Supabase exactly |
 | `scripts/migrate_v2.py`, `scripts/verify_v2.py` | Schema v2 import from a JSON snapshot (one transaction) and its exact check (expect 15/15) |
 | `evtime.py` | Houston-time `now_ct()`/`today_ct()`: every date the app writes |

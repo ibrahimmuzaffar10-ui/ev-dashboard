@@ -72,6 +72,19 @@ def _original_path(raw):
     return (q.get("__path") or [u.path])[0] or "/"
 
 
+SELFTEST_TERMS = {"fields": {"client_names": "TEST Client", "first_names": "TEST", "city_state": "Houston, TX", "rep_name": ""},  # leak-check: allow: the business's home city as a generic TEST placeholder
+                  "days": [{"date": "2027-03-14", "event": "TEST", "start": "4:00 PM", "end": "10:00 PM", "hours": "6"}],
+                  "plan": [{"label": "TEST payment", "due": "2027-01-15", "amount": 1000}],
+                  "issue": "2026-11-10", "sign_by": "2026-11-17", "total": 3000, "retainer": 1000}
+
+
+def selftest_text_sha(docx_path):
+    """Fingerprint of a Word file's text (not its bytes, which carry timestamps)."""
+    import re, zipfile
+    with zipfile.ZipFile(docx_path) as z:
+        return hashlib.sha256(re.sub(r"<[^>]+>", "", z.read("word/document.xml").decode("utf-8")).encode()).hexdigest()
+
+
 class handler(server.H):
     def parse_request(self):
         ok = super().parse_request()
@@ -130,8 +143,29 @@ class handler(server.H):
             return False
         return True
 
+    def _selftest(self):
+        """Ops check (no login, no data): render a TEST contract + questionnaire in /tmp with the real
+        wording from the database and report sizes. Answers only to the secret EV_SELFTEST_TOKEN header."""
+        import hmac, tempfile
+        tok = os.environ.get("EV_SELFTEST_TOKEN", "")
+        if not tok or not hmac.compare_digest(self.headers.get("X-EV-Selftest", ""), tok):
+            return self._send(404, '{"error":"not found"}')
+        out, d = {}, tempfile.mkdtemp(prefix="selftest-", dir="/tmp" if os.path.isdir("/tmp") else None)
+        terms = SELFTEST_TERMS
+        for kind in ("contract", "questionnaire"):
+            try:
+                files = server.render(kind, server.build_fill(terms), os.path.join(d, "TEST " + kind))
+                out[kind] = {os.path.splitext(f)[1]: os.path.getsize(f) for f in files}
+                out[kind]["text_sha256"] = selftest_text_sha([f for f in files if f.endswith(".docx")][0])
+            except Exception as ex:
+                out[kind] = {"error": str(ex)[:300]}
+        ok = all(isinstance(v, dict) and v.get(".pdf", 0) > 1000 and v.get(".docx", 0) > 1000 for v in out.values())
+        return self._send(200 if ok else 500, json.dumps({"ok": ok, "python": sys.version.split()[0], "render": out}))
+
     def do_GET(self):
         p = self.path.split("?")[0]
+        if p == "/api/_selftest":
+            return self._selftest()
         if p == "/login":
             return self._login_page()
         if p == "/logout":

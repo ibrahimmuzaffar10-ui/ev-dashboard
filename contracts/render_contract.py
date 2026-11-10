@@ -23,9 +23,9 @@ if CLEAN:  # client-facing view: no review page, no highlights, no notes, blanks
     SECTIONS = [(h, tg, [(k, _blank(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
 
 OUTDIR = os.path.expanduser("~/Documents/Emanant Visuals/Contracts")
-os.makedirs(OUTDIR, exist_ok=True)
 BASE = "EMANANT VISUALS - CONTRACT - " + ARGS.name
-if ARGS.out: OUTDIR, BASE = os.path.dirname(ARGS.out), os.path.basename(ARGS.out); os.makedirs(OUTDIR, exist_ok=True)
+if ARGS.out: OUTDIR, BASE = os.path.dirname(ARGS.out), os.path.basename(ARGS.out)
+os.makedirs(OUTDIR, exist_ok=True)  # only the folder actually written to (Vercel's home folder is read-only)
 
 # ---------------- DOCX ----------------
 from docx import Document

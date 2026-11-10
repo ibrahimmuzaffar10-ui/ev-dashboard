@@ -5,6 +5,11 @@
 !/db.py
 !/legacy.py
 !/mailer.py
+!/docstore.py
+!/contracts
+/contracts/*
+!/contracts/render_contract.py
+!/contracts/render_questionnaire.py
 !/evtime.py
 !/evenv.py
 !/dashboard_template.html

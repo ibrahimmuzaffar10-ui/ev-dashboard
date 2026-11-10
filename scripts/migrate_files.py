@@ -37,9 +37,7 @@ def sha(p):
     return h.hexdigest()
 
 
-def clean(name):                                # Storage keys: ASCII only
-    name = name.replace("–", "-").replace("—", "-")
-    return re.sub(r"[^A-Za-z0-9 _.()'!,&+=@-]", "_", name)
+from docstore import clean  # noqa: E402  (one copy of the naming rule)
 
 
 def sb(*args):

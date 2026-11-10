@@ -7,7 +7,7 @@ import json, os, shutil, datetime, threading, re, subprocess, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import html as _html, tempfile
 import evenv
-import db, evtime, mailer
+import db, docstore, evtime, mailer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Data lives outside the repo (EV_DATA_DIR); the repo holds code only.
@@ -33,8 +33,11 @@ def send_mail(to, subject, body, in_reply_to=None, attachments=()):
 
 # ---------------- contracts ----------------
 VENV_PY = os.path.expanduser(os.environ.get("EV_PYTHON", "~/.hermes/venvs/ev/bin/python"))
+if db.CLOUD and not os.path.exists(VENV_PY):
+    import sys as _sys
+    VENV_PY = _sys.executable          # Vercel: the function's own Python has python-docx + reportlab
 CDIR = os.path.join(HERE, "contracts")
-EVDOCS = os.path.expanduser(os.environ.get("EV_DOCS_DIR", "~/Documents/Emanant Visuals"))
+EVDOCS = docstore.docs_root(os.path.expanduser(os.environ.get("EV_DOCS_DIR", "~/Documents/Emanant Visuals")))
 # Contract wording (prices, payment details) is NOT in git: it lives in EV_CONTRACT_CONTENT_DIR.
 CONTENT_DIR = os.path.expanduser(os.environ.get("EV_CONTRACT_CONTENT_DIR", ""))
 SERVED_DIR = os.path.expanduser(os.environ.get("EV_SERVED_DIR", os.path.join(CDIR, "served")))
@@ -77,7 +80,14 @@ def render(kind, fill, out):
             cmd = [VENV_PY, os.path.join(CDIR, "render_contract.py"), "--content", "contract_final_content", "--name", "x", "--clean", "--fill", tmp, "--out", out]
         else:
             cmd = [VENV_PY, os.path.join(CDIR, "render_questionnaire.py"), "--fill", tmp, "--out", out]
-        env = dict(os.environ, PYTHONPATH=CONTENT_DIR) if CONTENT_DIR else None
+        cdir = docstore.content_dir(CONTENT_DIR)
+        paths = [cdir] if cdir else []
+        import sys as _sys
+        if os.path.realpath(VENV_PY) == os.path.realpath(_sys.executable):
+            # same Python as this server (Vercel): python-docx/reportlab sit beside the function, not in
+            # site-packages, so hand the renderer this process's paths. Never for a different Python.
+            paths += [p for p in _sys.path if p]
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(paths)) if paths else None
         r = subprocess.run(cmd, cwd=CDIR, capture_output=True, text=True, timeout=120, env=env)
         if r.returncode != 0: raise RuntimeError(r.stderr[-400:])
     finally:
@@ -115,10 +125,10 @@ def activate_signed(d, lead, pdf_bytes=None):
         name = doc_name(t); t["signed_on"] = today()
         if pdf_bytes:
             os.makedirs(SIGNED, exist_ok=True); sp = os.path.join(SIGNED, name + ".pdf")
-            open(sp, "wb").write(pdf_bytes); t["signed_file"] = sp; notes.append("Signed copy saved to Signed Contracts.")
+            open(sp, "wb").write(pdf_bytes); t["signed_file"] = docstore.register([sp], "signed")[0]; notes.append("Signed copy saved to Signed Contracts.")
         try:
             qfiles = render("questionnaire", build_fill(t), os.path.join(QDIR, name + " – Questionnaire"))
-            t["questionnaire_files"] = qfiles
+            t["questionnaire_files"] = docstore.register(qfiles, "questionnaires")
             send_mail(FROM_EMAIL, f"[Emanant HQ] Questionnaire ready to send: {name}",
                       f"{lead['client']} signed their contract. 🎉\n\nAttached is their Client To-Do Questionnaire with Section A pre-filled from the signed agreement. Review it and send it to the client whenever you're ready.\n\nReturn-by date: {build_fill(t).get('questionnaire_due','')}\n\n— Emanant HQ", attachments=qfiles)
             notes.append("Questionnaire emailed to Eman.")
@@ -242,10 +252,15 @@ class H(BaseHTTPRequestHandler):
             name = os.path.basename(urllib.parse.unquote(self.path[6:]))
             M = {"EMANANT VISUALS - CONTRACT - VFinal": "contract", "EMANANT VISUALS - Client To-Do Questionnaire - VFinal": "questionnaire"}
             stem, ext = os.path.splitext(name)
-            fp = os.path.join(SERVED_DIR, M.get(stem, "-") + ext)
-            if not name or not os.path.isfile(fp): return self._send(404, "not found", "text/plain")
+            if db.CLOUD:
+                got = docstore.template(M.get(stem, "-"), ext) if name and stem in M else None
+                if not got: return self._send(404, "not found", "text/plain")
+                b = got[1]
+            else:
+                fp = os.path.join(SERVED_DIR, M.get(stem, "-") + ext)
+                if not name or not os.path.isfile(fp): return self._send(404, "not found", "text/plain")
+                b = open(fp, "rb").read()
             ctype = "application/pdf" if name.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            b = open(fp, "rb").read()
             self.send_response(200); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(b)))
             self.send_header("Content-Disposition", ("inline" if name.endswith(".pdf") else "attachment") + "; filename*=UTF-8''" + urllib.parse.quote(name))
             self.send_header("Cache-Control", "no-store"); self.end_headers(); return self.wfile.write(b)
@@ -307,7 +322,7 @@ class H(BaseHTTPRequestHandler):
                     terms["fields"].setdefault("rep_name", "")
                     name = doc_name(terms); terms["name"] = name
                     files = render("contract", build_fill(terms), os.path.join(DRAFTS, name + " – Contract"))
-                    terms["draft_files"] = files
+                    terms["draft_files"] = docstore.register(files, "drafts")
                     lead["contract_terms"] = terms; lead["total"] = terms["total"]; lead["contract"] = "not_sent"
                     if days: lead["event"] = days[0]["date"]
                     store(d, {"id": lead["id"], "client": lead["client"], "field": "contract_terms", "old": None, "new": name})

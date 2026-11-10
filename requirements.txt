@@ -1,2 +1,4 @@
 pg8000==1.31.6
 tzdata
+python-docx==1.2.0
+reportlab==5.0.1

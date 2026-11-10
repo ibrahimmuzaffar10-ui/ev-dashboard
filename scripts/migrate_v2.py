@@ -29,7 +29,7 @@ def main():
         c.run("begin")
         c.run("select pg_advisory_xact_lock(:k)", k=db.LOCK_KEY)
         man = c.run("select value::text from public.app_state where doc = 'storage_manifest' and key = 'files'")
-        storage = {os.path.expanduser(m["source"]): m for m in (json.loads(man[0][0]) if man else [])}
+        storage = db.storage_index(json.loads(man[0][0]) if man else [])
         for tbl in ("alert_emails", "alerts", "documents", "contract_plan_items", "event_days", "payments",
                     "installments", "contracts", "leads", "clients", "vendors", "emails"):
             c.run(f"delete from public.{tbl}")

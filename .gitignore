@@ -15,6 +15,8 @@
 !db.py
 !legacy.py
 !mailer.py
+!docstore.py
+!docs_sync.py
 !outbox_send.py
 !evtime.py
 !requirements.txt
@@ -46,6 +48,10 @@
 !scripts/verify_v2.py
 !scripts/test_step2.py
 !scripts/test_step3.py
+!scripts/test_step4.py
+!scripts/load_files.py
+!scripts/shadow_compare.py
+!deploy/launchd.py
 !.githooks/pre-commit
 !.githooks/pre-push
 

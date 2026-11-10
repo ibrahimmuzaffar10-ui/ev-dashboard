@@ -3,7 +3,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 30,
-      "includeFiles": "{server.py,db.py,legacy.py,mailer.py,evtime.py,evenv.py,dashboard_template.html,calendar.html,supabase/supabase-ca.crt}"
+      "includeFiles": "{server.py,db.py,legacy.py,mailer.py,docstore.py,evtime.py,evenv.py,dashboard_template.html,calendar.html,supabase/supabase-ca.crt,contracts/render_contract.py,contracts/render_questionnaire.py}"
     }
   },
   "rewrites": [{ "source": "/:path*", "destination": "/api/index?__path=/:path*" }]
