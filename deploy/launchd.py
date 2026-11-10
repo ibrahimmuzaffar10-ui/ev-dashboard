@@ -19,14 +19,17 @@ SUPPORT = os.path.join(HOME, "Library", "Application Support", "emanant-hq")
 PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
-def job(label, script, env, interval=None, keepalive=False, log=None):
-    d = {"Label": label, "ProgramArguments": [PY, os.path.join(REPO, script)], "WorkingDirectory": REPO,
+def job(label, script, env, interval=None, keepalive=False, log=None, at=None, args=()):
+    d = {"Label": label, "ProgramArguments": [PY, os.path.join(REPO, script), *args], "WorkingDirectory": REPO,
          "EnvironmentVariables": dict({"PATH": PATH}, **env), "RunAtLoad": True,
          "StandardOutPath": os.path.join(LOGS, (log or label) + ".log"), "StandardErrorPath": os.path.join(LOGS, (log or label) + ".log")}
     if interval:
         d["StartInterval"] = interval
     if keepalive:
         d["KeepAlive"] = True
+    if at:
+        d["StartCalendarInterval"] = {"Hour": at[0], "Minute": at[1]}
+        d["RunAtLoad"] = False
     return d
 
 
@@ -47,6 +50,7 @@ def jobs(mode):
             job("com.emanantvisuals.watch", "watch.py", base, interval=60, log="watch"),   # step 7: every minute (lock file stops overlaps)
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
+            job("com.emanantvisuals.backup", "scripts/backup.py", base, at=(2, 0), log="backup"),   # nightly 2 AM
         ]
     sys.exit("mode must be shadow or prod")
 

@@ -42,6 +42,7 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `docstore.py`, `docs_sync.py`, `scripts/load_files.py` | Contract files: `files` table + registry (cloud), Mac copy into Documents (never overwrites/deletes), loader for existing files + wording |
 | `scripts/test_step4.py` | Step 4 test: contracts online (expect 14/14) |
 | `deploy/launchd.py` | Installs/removes the Mac background jobs: `shadow` (step 5) or `prod` (cutover); keeps the originals |
+| `scripts/export_json.py`, `scripts/backup.py`, `scripts/restore_drill.py` | Rollback (Supabase → JSON files), nightly pg_dump backup (30 kept), restore drill into a throwaway local Postgres 17 (expect 17/17 tables identical) |
 | `scripts/shadow_compare.py` | Step 5: record the start, then compare shadow (Supabase) vs live after 48 h |
 | `scripts/test_step2.py` | Step 2 test: watcher/Zelle/brief on Supabase in shadow mode, failure + retry + overlap + idempotency (expect 16/16); restores Supabase exactly |
 | `scripts/migrate_v2.py`, `scripts/verify_v2.py` | Schema v2 import from a JSON snapshot (one transaction) and its exact check (expect 15/15) |
@@ -115,4 +116,5 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 - Vercel rewrites send every request to `/api/index?__path=/<path>`; `api/index.py` restores the path.
 - **This Mac's clock is America/New_York**; himalaya email dates are UTC. All writes go through `evtime` (Houston). Never use `datetime.now()`/`date.today()` for stored values.
 - Mac jobs reach Supabase through `db.py` helpers (watcher/calendar via the local server's API; Zelle/brief/watch state directly). They need the repo `.venv` Python (pg8000) in cloud mode.
+- PostgreSQL 17.11 client/server tools from Homebrew (`/opt/homebrew/opt/postgresql@17/bin`, keg-only) are used only for backups and the restore drill; nothing runs as a service.
 - macOS TCC: launchd jobs can't read `~/Documents` files they didn't create — keep job code outside `~/Documents`.

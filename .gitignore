@@ -52,6 +52,9 @@
 !scripts/load_files.py
 !scripts/shadow_compare.py
 !deploy/launchd.py
+!scripts/export_json.py
+!scripts/backup.py
+!scripts/restore_drill.py
 !.githooks/pre-commit
 !.githooks/pre-push
 
