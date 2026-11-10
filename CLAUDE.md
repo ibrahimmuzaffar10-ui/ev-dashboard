@@ -37,6 +37,8 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `db.py` | Data layer: `EV_BACKEND=json` (default, files) or `supabase` (one transaction + advisory lock per save, as role `ev_server` via the pooler, verified TLS) |
 | `legacy.py` | Schema v2 ⇄ old JSON shape: one converter used by the import, the checker and the website (`legacy_shape` keeps absent keys / untypable originals) |
 | `api/index.py`, `vercel.json`, `.vercelignore` | Vercel entry: server.py behind Supabase login + allowlist, read-only (403 on saves). `.vercelignore` is an allowlist |
+| `mailer.py`, `outbox_send.py` | Email: one builder/sender; cloud mode queues in `outbox` (same transaction as the save), the Mac sender sends (never re-sends an interrupted email) |
+| `scripts/test_step3.py` | Step 3 test: outbox, dry run (expect 13/13) |
 | `scripts/test_step2.py` | Step 2 test: watcher/Zelle/brief on Supabase in shadow mode, failure + retry + overlap + idempotency (expect 16/16); restores Supabase exactly |
 | `scripts/migrate_v2.py`, `scripts/verify_v2.py` | Schema v2 import from a JSON snapshot (one transaction) and its exact check (expect 15/15) |
 | `evtime.py` | Houston-time `now_ct()`/`today_ct()`: every date the app writes |

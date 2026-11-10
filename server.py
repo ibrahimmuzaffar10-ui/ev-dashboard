@@ -3,13 +3,11 @@
 Run:  python3 server.py            -> http://localhost:8787
 Data: tracker_data.json (same folder). Every change is backed up and logged.
 """
-import json, os, shutil, datetime, threading, re, smtplib, imaplib, subprocess, time
-from email.message import EmailMessage
-from email.utils import make_msgid, formatdate
+import json, os, shutil, datetime, threading, re, subprocess, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import html as _html, tempfile
 import evenv
-import db, evtime
+import db, evtime, mailer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Data lives outside the repo (EV_DATA_DIR); the repo holds code only.
@@ -25,33 +23,13 @@ LOCK = threading.Lock()
 OWN_EMAIL = os.environ.get("EV_ICLOUD_LOGIN", "") if db.CLOUD else evenv.need("EV_ICLOUD_LOGIN")
 FROM_EMAIL = os.environ.get("EV_FROM_EMAIL", "") if db.CLOUD else evenv.need("EV_FROM_EMAIL")  # business address (iCloud+ custom domain); login stays the Apple ID email
 
-def icloud_pw():
-    return subprocess.run(["security", "find-generic-password", "-s", "hermes-icloud", "-w"], capture_output=True, text=True, timeout=20).stdout.strip()
-
 def send_mail(to, subject, body, in_reply_to=None, attachments=()):
-    if db.CLOUD:  # cloud mode never sends mail itself: the Mac outbox does (Phase 4c)
-        raise RuntimeError("email sending is not available in cloud mode yet")
-    msg = EmailMessage()
-    msg["From"] = f"Eman | Emanant Visuals <{FROM_EMAIL}>"; msg["To"] = to; msg["Subject"] = subject
-    msg["Date"] = formatdate(localtime=True); msg["Message-ID"] = make_msgid(domain="emanantvisuals.com")
-    if in_reply_to:
-        ref = in_reply_to if in_reply_to.startswith("<") else f"<{in_reply_to}>"
-        msg["In-Reply-To"] = ref; msg["References"] = ref
-    msg.set_content(body)
-    for ap in attachments or ():
-        with open(ap, "rb") as fh:
-            data = fh.read()
-        sub = "pdf" if ap.endswith(".pdf") else "vnd.openxmlformats-officedocument.wordprocessingml.document"
-        msg.add_attachment(data, maintype="application", subtype=sub, filename=os.path.basename(ap))
-    pw = icloud_pw()
-    with smtplib.SMTP("smtp.mail.me.com", 587, timeout=30) as s:
-        s.starttls(); s.login(OWN_EMAIL, pw); s.send_message(msg)
-    try:  # keep a copy in Sent so Eman sees it in Mail
-        im = imaplib.IMAP4_SSL("imap.mail.me.com"); im.login(OWN_EMAIL, pw)
-        im.append('"Sent Messages"', "\\Seen", imaplib.Time2Internaldate(time.time()), msg.as_bytes()); im.logout()
-    except Exception:
-        pass
-    return msg["Message-ID"]
+    """JSON mode: send now from Eman's iCloud. Cloud mode: queue it in the outbox, in the same
+    transaction as this request's save (the Mac sender sends it). Returns the Message-ID."""
+    files = mailer.read_files(attachments)
+    if db.CLOUD:
+        return db.outbox_enqueue(to or mailer.SELF, subject, body, in_reply_to, files)
+    return mailer.send(mailer.build(to, subject, body, in_reply_to, files))
 
 # ---------------- contracts ----------------
 VENV_PY = os.path.expanduser(os.environ.get("EV_PYTHON", "~/.hermes/venvs/ev/bin/python"))

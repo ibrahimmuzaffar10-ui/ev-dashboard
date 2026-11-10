@@ -14,6 +14,8 @@
 !evenv.py
 !db.py
 !legacy.py
+!mailer.py
+!outbox_send.py
 !evtime.py
 !requirements.txt
 !server.py
@@ -43,6 +45,7 @@
 !scripts/migrate_v2.py
 !scripts/verify_v2.py
 !scripts/test_step2.py
+!scripts/test_step3.py
 !.githooks/pre-commit
 !.githooks/pre-push
 

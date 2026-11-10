@@ -4,6 +4,7 @@
 !/server.py
 !/db.py
 !/legacy.py
+!/mailer.py
 !/evtime.py
 !/evenv.py
 !/dashboard_template.html

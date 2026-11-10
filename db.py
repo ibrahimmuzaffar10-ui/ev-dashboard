@@ -442,6 +442,35 @@ def emails_upsert(rows):
         c.close()
 
 
+# ------------------------------------------------------------------ email outbox (step 3)
+def outbox_enqueue(to, subject, body, in_reply_to=None, files=()):
+    """Queue an email. Inside a save (locked, not yet stored) it joins that transaction, so it is
+    queued only if the save commits. Otherwise (after the save) it gets its own transaction."""
+    import hashlib, mailer
+    mid = mailer.new_message_id()
+    tx = getattr(_tls, "tx", None)
+    own = not (tx and not tx["done"])
+    c = _connect() if own else tx["conn"]
+    try:
+        if own:
+            c.run("begin")
+        oid = c.run("insert into public.outbox (message_id, to_addr, subject, body, in_reply_to) "
+                    "values (:m, :t, :s, :b, :r) returning outbox_id", m=mid, t=to, s=subject, b=body, r=in_reply_to)[0][0]
+        for i, (name, ctype, data) in enumerate(files or ()):
+            c.run("insert into public.outbox_files (outbox_id, position, filename, content_type, data, sha256) "
+                  "values (:o, :p, :n, :c, :d, :h)", o=oid, p=i, n=name, c=ctype, d=data, h=hashlib.sha256(data).hexdigest())
+        if own:
+            c.run("commit")
+    except Exception:
+        if own:
+            c.run("rollback")
+        raise
+    finally:
+        if own:
+            c.close()
+    return mid
+
+
 def user_is_allowed(uid):
     """True only if this Supabase user id is on the allowlist (asks about one id; cannot list it)."""
     return bool(_read_only(lambda c: c.run("select private.user_is_allowed(cast(:u as uuid))", u=uid)[0][0]))
