@@ -8,6 +8,8 @@
 !.gitleaks.toml
 !.env.example
 !README.md
+!CLAUDE.md
+!docs/ROADMAP.md
 
 !evenv.py
 !server.py
