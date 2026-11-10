@@ -1,5 +1,6 @@
--- RLS / privilege test for schema v1 (Phase 2). Runs locally against supabase_stub.sql.
--- Prints one row per check: name | expected | got | PASS/FAIL. Uses fake TEST rows only.
+-- Schema v1 test (Phase 2). Runs locally against supabase_stub.sql + the migration.
+-- One row per check: name | expected | got | PASS/FAIL. Fake TEST rows only.
+-- A refusal must be SQLSTATE 42501 (permission / RLS), so a typo or constraint error can't pass.
 \set ON_ERROR_STOP 0
 \pset footer off
 create temp table r (n serial, check_name text, expected text, got text);
@@ -8,68 +9,86 @@ grant all on r to public; grant all on sequence r_n_seq to public;
 -- fixture (as owner): one allowlisted user, one signed-in user NOT on the allowlist
 insert into auth.users (id) values ('00000000-0000-0000-0000-00000000000a'), ('00000000-0000-0000-0000-00000000000b');
 insert into private.app_users (user_id, label) values ('00000000-0000-0000-0000-00000000000a', 'test');
-insert into public.leads (id, pos, client, contract_terms, key_order) values ('L999', 0, 'TEST lead', '{"fields": {"b": 1, "a": 2}}', '{id,client,contract_terms}');
-insert into public.alerts (id, pos, title) values ('A9999', 0, 'TEST alert');
-insert into public.vendors (pos, name) values (0, 'TEST vendor');
-insert into public.payments (pos, email_id) values (0, 'test-1');
-insert into public.changelog (at, client, field) values ('2026-11-10T00:00:00', 'TEST', 'x');
-insert into public.seen_emails values ('test-key', 0);
+insert into public.leads (pos, raw) values (0, '{"status": "open", "id": "L999", "client": "TEST lead", "total": 500.0, "paid": null, "quote": 1800, "contract_terms": {"fields": {"b": 1, "a": 2}}}');
+insert into public.alerts (pos, raw) values (0, '{"id": "A9999", "title": "TEST alert", "email_id": "e1", "done": false}');
+insert into public.vendors (pos, raw) values (0, '{"name": "TEST vendor"}');
+insert into public.payments (pos, raw) values (0, '{"email_id": "test-1", "amount": "n/a"}');
+insert into public.emails (key) values ('test-key');
 insert into public.app_state (doc, key, value) values ('tracker_data', 'finance', '{}');
 insert into public.settings values ('test', '"x"');
 insert into storage.objects (bucket_id, name) values ('contracts', 'leads/L999/test.pdf');
 
+-- returns the row count, or the SQLSTATE of the error
 create function pg_temp.cnt(tbl text) returns text language plpgsql as $$
 declare n bigint; begin execute format('select count(*) from %s', tbl) into n; return n::text;
-exception when others then return 'refused'; end $$;
+exception when others then return sqlstate; end $$;
 create function pg_temp.try(sql text) returns text language plpgsql as $$
-declare n bigint; begin execute sql; get diagnostics n = row_count; return case when n = 0 then '0 rows' else n || ' rows' end;
-exception when others then return 'refused'; end $$;
+declare n bigint; begin execute sql; get diagnostics n = row_count; return n || ' rows';
+exception when others then return sqlstate; end $$;
 
-\set tables '{public.leads,public.alerts,public.vendors,public.payments,public.changelog,public.seen_emails,public.app_state,public.settings,private.app_users,storage.objects}'
+-- the migration revokes EXECUTE from PUBLIC on new functions, so grant the test helpers on purpose
+grant execute on function pg_temp.cnt(text), pg_temp.try(text) to anon, authenticated;
 
--- 1) anon reads
+-- per table: a valid insert and a harmless update
+create temp table w (t text primary key, ins text, upd text);
+grant select on w to public;
+insert into w values
+  ('public.leads',      $x$(pos, raw) values (5, '{"id": "L998"}')$x$,                                 'pos = pos'),
+  ('public.alerts',     $x$(pos, raw) values (5, '{"id": "A9998"}')$x$,                                'pos = pos'),
+  ('public.vendors',    $x$(pos, raw) values (5, '{}')$x$,                                             'pos = pos'),
+  ('public.payments',   $x$(pos, raw) values (5, '{"email_id": "x"}')$x$,                              'pos = pos'),
+  ('public.emails',     $x$(key) values ('x')$x$,                                                      'attempts = 0'),
+  ('public.app_state',  $x$(doc, key) values ('x', 'x')$x$,                                            'value = null'),
+  ('public.settings',   $x$(key, value) values ('x', '1')$x$,                                          $x$value = '1'$x$),
+  ('private.app_users', $x$(user_id, label) values ('00000000-0000-0000-0000-00000000000b', 'x')$x$,   $x$label = 'x'$x$),
+  ('storage.objects',   $x$(bucket_id, name) values ('contracts', 'x.pdf')$x$,                         'name = name');
+
+-- 1) anon: no privileges at all (storage.objects: Supabase grants it, RLS filters)
 set role anon; select set_config('request.jwt.claim.sub', '', false);
-insert into r (check_name, expected, got) select 'anon read ' || t, 'refused|0', pg_temp.cnt(t) from unnest(:'tables'::text[]) t;
-insert into r (check_name, expected, got) select 'anon insert ' || t, 'refused', pg_temp.try(format('insert into %s default values', t)) from unnest(:'tables'::text[]) t;
-insert into r (check_name, expected, got) select 'anon update ' || t, 'refused|0 rows', pg_temp.try(format('update %s set pos = pos', t)) from unnest(:'tables'::text[]) t where t not like 'private%' and t not like 'storage%' and t not in ('public.changelog','public.app_state','public.settings');
-insert into r (check_name, expected, got) select 'anon delete ' || t, 'refused|0 rows', pg_temp.try(format('delete from %s', t)) from unnest(:'tables'::text[]) t;
+insert into r (check_name, expected, got) select 'anon read ' || t, case when t like 'storage%' then '0' else '42501' end, pg_temp.cnt(t) from w;
+insert into r (check_name, expected, got) select 'anon insert ' || t, '42501', pg_temp.try(format('insert into %s %s', t, ins)) from w;
+insert into r (check_name, expected, got) select 'anon update ' || t, case when t like 'storage%' then '0 rows' else '42501' end, pg_temp.try(format('update %s set %s', t, upd)) from w;
+insert into r (check_name, expected, got) select 'anon delete ' || t, case when t like 'storage%' then '0 rows' else '42501' end, pg_temp.try(format('delete from %s', t)) from w;
 reset role;
 
--- 2) signed in, NOT on the allowlist
+-- 2) signed in, NOT on the allowlist: sees 0 rows, can't write
 set role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
-insert into r (check_name, expected, got) select 'stranger read ' || t, 'refused|0', pg_temp.cnt(t) from unnest(:'tables'::text[]) t;
-insert into r (check_name, expected, got) select 'stranger delete ' || t, 'refused|0 rows', pg_temp.try(format('delete from %s', t)) from unnest(:'tables'::text[]) t;
-insert into r (check_name, expected, got) values ('stranger add self to allowlist', 'refused',
-  pg_temp.try($q$insert into private.app_users (user_id, label) values ('00000000-0000-0000-0000-00000000000b','x')$q$));
+insert into r (check_name, expected, got) select 'stranger read ' || t, case when t like 'private%' then '42501' else '0' end, pg_temp.cnt(t) from w;
+insert into r (check_name, expected, got) select 'stranger insert ' || t, '42501', pg_temp.try(format('insert into %s %s', t, ins)) from w;
+insert into r (check_name, expected, got) select 'stranger delete ' || t, case when t like 'storage%' then '0 rows' else '42501' end, pg_temp.try(format('delete from %s', t)) from w;
 reset role;
 
--- 3) allowlisted user: may read, may NOT write (cloud is read-only until Phase 7)
+-- 3) allowlisted user: reads everything, writes nothing (cloud is read-only until Phase 7)
 set role authenticated; select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
-insert into r (check_name, expected, got) select 'allowed read ' || t, '1', pg_temp.cnt(t) from unnest(:'tables'::text[]) t where t not like 'private%';
-insert into r (check_name, expected, got) values ('allowed read private.app_users', 'refused', pg_temp.cnt('private.app_users'));
-insert into r (check_name, expected, got) values
-  ('allowed insert lead', 'refused', pg_temp.try($q$insert into public.leads (id, pos) values ('L998', 1)$q$)),
-  ('allowed update lead', 'refused|0 rows', pg_temp.try($q$update public.leads set client = 'x'$q$)),
-  ('allowed delete alert', 'refused|0 rows', pg_temp.try($q$delete from public.alerts$q$)),
-  ('allowed upload to Storage', 'refused', pg_temp.try($q$insert into storage.objects (bucket_id, name) values ('contracts','x.pdf')$q$)),
-  ('allowed delete from Storage', 'refused|0 rows', pg_temp.try($q$delete from storage.objects$q$));
+insert into r (check_name, expected, got) select 'allowed read ' || t, case when t like 'private%' then '42501' else '1' end, pg_temp.cnt(t) from w;
+insert into r (check_name, expected, got) select 'allowed insert ' || t, '42501', pg_temp.try(format('insert into %s %s', t, ins)) from w;
+insert into r (check_name, expected, got) select 'allowed update ' || t, case when t like 'storage%' then '0 rows' else '42501' end, pg_temp.try(format('update %s set %s', t, upd)) from w;
+insert into r (check_name, expected, got) select 'allowed delete ' || t, case when t like 'storage%' then '0 rows' else '42501' end, pg_temp.try(format('delete from %s', t)) from w;
 reset role;
 
--- 4) owner (the Phase 4 server): changelog is insert-only even for the owner; constraints hold
+-- 4) exact round trip + generated columns (as owner)
 insert into r (check_name, expected, got) values
-  ('owner update changelog', 'refused', pg_temp.try($q$update public.changelog set field = 'y'$q$)),
-  ('owner delete changelog', 'refused', pg_temp.try($q$delete from public.changelog$q$)),
-  ('duplicate alert email_id', 'refused', pg_temp.try($q$insert into public.alerts (id, pos, email_id) values ('A9997',1,'e1'), ('A9998',2,'e1')$q$)),
-  ('bad lead id format', 'refused', pg_temp.try($q$insert into public.leads (id, pos) values ('X1', 9)$q$)),
-  ('alert count default', '1', (select count::text from public.alerts where id = 'A9999')),
-  ('alert email_ids default', '[]', (select email_ids::text from public.alerts where id = 'A9999')),
-  ('nested JSON keeps key order', '{"b": 1, "a": 2}', (select (contract_terms->'fields')::text from public.leads where id = 'L999')),
+  ('raw comes back byte-identical', 'true', (select (raw::text = '{"status": "open", "id": "L999", "client": "TEST lead", "total": 500.0, "paid": null, "quote": 1800, "contract_terms": {"fields": {"b": 1, "a": 2}}}')::text from public.leads where id = 'L999')),
+  ('generated id/status/total', 'L999|open|500.0', (select id || '|' || status || '|' || total from public.leads)),
+  ('null and missing both give NULL column', 'true', (select (paid is null and src_email is null)::text from public.leads)),
+  ('odd value gives NULL, not an error', 'true', (select (amount is null)::text from public.payments)),
+  ('generated column cannot be written', '428C9', pg_temp.try($q$update public.leads set status = 'x'$q$)),
+  ('bad lead id refused', '23514', pg_temp.try($q$insert into public.leads (pos, raw) values (7, '{"id": "L12"}')$q$)),
+  ('lead without id refused', '23502', pg_temp.try($q$insert into public.leads (pos, raw) values (8, '{"client": "TEST"}')$q$)),
+  ('raw must be an object', '23514', pg_temp.try($q$insert into public.vendors (pos, raw) values (9, '[1]')$q$)),
+  ('duplicate pos refused at commit', '23505', pg_temp.try($q$insert into public.alerts (pos, raw) values (0, '{"id": "A9997"}'); set constraints all immediate$q$)),
+  ('same email_id twice allowed (alerts)', '1 rows', pg_temp.try($q$insert into public.alerts (pos, raw) values (3, '{"id": "A9996", "email_id": "e1"}')$q$)),
+  ('bad email status refused', '23514', pg_temp.try($q$insert into public.emails (key, status) values ('k2', 'seen?')$q$)),
   ('bucket contracts is private', 'false', (select public::text from storage.buckets where id = 'contracts')),
   ('RLS on, every public table', '0', (select count(*)::text from pg_tables where schemaname = 'public' and not rowsecurity));
 
+-- 5) a function added LATER is not callable by anon (default privileges)
+create function public.future_f() returns int language sql security definer as $$ select 1 $$;
+set role anon;
+insert into r (check_name, expected, got) values ('anon calls a future function', '42501', pg_temp.try('select public.future_f()'));
+reset role;
+
 select n, check_name, expected, got,
-       case when got = any (string_to_array(expected, '|')) then 'PASS' else 'FAIL' end as result
+       case when got = expected then 'PASS' else 'FAIL' end as result
 from r order by n;
-select count(*) filter (where got = any (string_to_array(expected, '|'))) as pass,
-       count(*) filter (where not got = any (string_to_array(expected, '|'))) as fail
-from r;
+select count(*) filter (where got = expected) as pass, count(*) filter (where got is distinct from expected) as fail from r;

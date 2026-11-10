@@ -7,9 +7,11 @@ Needs in .env.local (gitignored):
   SUPABASE_URL, SUPABASE_ANON_KEY
   EV_TEST_STRANGER_EMAIL / EV_TEST_STRANGER_PASSWORD  - a test user Ibrahim created in the dashboard,
                                                         NOT on the allowlist
-  EV_TEST_ALLOWED_EMAIL / EV_TEST_ALLOWED_PASSWORD    - optional: an allowlisted user (positive check)
-  EV_TEST_STORAGE_OBJECT                              - optional: path of a dummy file in bucket
-                                                        'contracts', e.g. test/probe.pdf
+  EV_TEST_ALLOWED_EMAIL / EV_TEST_ALLOWED_PASSWORD    - an allowlisted user (proves the refusals
+                                                        aren't just empty tables)
+  EV_TEST_STORAGE_OBJECT                              - a dummy PDF uploaded to bucket 'contracts'
+                                                        in the dashboard, e.g. test/probe.pdf
+Before: run supabase/tests/live_seed.sql (one TEST row per table). After: live_unseed.sql.
 Run:  python3 scripts/test_rls_live.py      exit 0 = all pass
 """
 import json, os, sys, urllib.error, urllib.request
@@ -19,7 +21,7 @@ import evenv  # noqa: E402,F401  (loads .env.local)
 
 URL = evenv.need("SUPABASE_URL").rstrip("/")
 ANON = evenv.need("SUPABASE_ANON_KEY")
-TABLES = ["leads", "alerts", "vendors", "payments", "changelog", "seen_emails", "app_state", "settings"]
+TABLES = ["leads", "alerts", "vendors", "payments", "emails", "app_state", "settings"]
 results = []
 
 
@@ -60,8 +62,8 @@ def reads(who, token, expect_rows):
         check(f"{who} read {t}", ok, f"HTTP {s}, {n if n is not None else '-'} rows")
 
 
-FILTER = {"app_state": "key=neq.__none__", "settings": "key=neq.__none__", "changelog": "seq=gte.0"}  # PostgREST needs a filter
-PATCH = {"changelog": {"field": "x"}, "seen_emails": {"pos": 0}}
+FILTER = {"app_state": "key=neq.__none__", "settings": "key=neq.__none__", "emails": "key=neq.__none__"}  # PostgREST needs a filter
+PATCH = {}
 
 
 def writes(who, token):
@@ -99,13 +101,13 @@ check("anon sign-up refused", s in (400, 403, 422), f"HTTP {s}")
 tok = login("EV_TEST_STRANGER_EMAIL", "EV_TEST_STRANGER_PASSWORD")
 if tok: reads("stranger", tok, False); writes("stranger", tok); storage("stranger", tok, False)
 else: check("stranger tests", False, "EV_TEST_STRANGER_* not set")
-# 3) allowlisted (optional positive check — proves the tests above aren't passing for the wrong reason)
+# 3) allowlisted: must SEE the seeded rows, or the 0-row results above prove nothing
 tok = login("EV_TEST_ALLOWED_EMAIL", "EV_TEST_ALLOWED_PASSWORD")
 if tok:
-    writes("allowed", tok)
-    s, raw = call("GET", "/rest/v1/leads?select=id&limit=1", tok)
-    check("allowed read leads (HTTP 200)", s == 200, f"HTTP {s}")
+    reads("allowed", tok, True); writes("allowed", tok)
     if os.environ.get("EV_TEST_STORAGE_OBJECT"): storage("allowed", tok, True)
+    else: check("allowed Storage tests", False, "EV_TEST_STORAGE_OBJECT not set")
+else: check("allowed tests", False, "EV_TEST_ALLOWED_* not set")
 
 w = max(len(r[0]) for r in results)
 for name, res, got in results: print(f"{name:<{w}}  {res}  {got}")

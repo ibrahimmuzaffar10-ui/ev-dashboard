@@ -1,84 +1,83 @@
 #!/usr/bin/env python3
-"""Schema check against the live JSON. Read-only. Prints key NAMES, types and counts only,
-never a value, so the output is safe to paste into chat.
+"""Schema v1 pre-check against the live JSON. Read-only. Prints key NAMES, types and counts
+only, never a value, so the output is safe to paste into chat.
 
 Usage (on the Mac):  EV_DATA_DIR=~/EmanantHQ python3 scripts/profile_keys.py
-Exit 0 = every key/type fits schema v1 (or is safely kept in `extra`) and no blockers.
-Blockers: duplicate ids/email_ids where the schema says UNIQUE, NUL characters (Postgres can't store them).
+Exit 0 = 0 blockers = the Phase 3 import will not hit a constraint.
 """
-import collections, json, os, sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import db_codec as c  # noqa: E402
+import collections, json, os, re, sys
 
 D = os.path.expanduser(os.environ.get("EV_DATA_DIR", "~/EmanantHQ"))
 blockers, notes = [], []
+# generated columns in the schema: key -> JSON type it must have to fill the column (else NULL)
+PROJECTED = {
+    "leads": {"id": "str", "client": "str", "status": "str", "event": "str", "src_email": "str", "alt_email": "str", "total": "num", "paid": "num"},
+    "alerts": {"id": "str", "type": "str", "at": "str", "lead_id": "str", "email_id": "str", "from_email": "str", "done": "bool"},
+    "vendors": {"name": "str"},
+    "payments": {"email_id": "str", "date": "str", "amount": "num", "lead_id": "str"},
+}
+KEY = {"leads": ("id", r"^L[0-9]{3,}$"), "alerts": ("id", r"^A[0-9]{4,}$"), "payments": ("email_id", r".")}
 
 
 def jtype(v):
     if v is None: return "null"
     if isinstance(v, bool): return "bool"
-    if isinstance(v, int): return "int"
-    if isinstance(v, float): return "float-whole" if v.is_integer() else "float"
+    if isinstance(v, (int, float)): return "num"
     return {str: "str", list: "list", dict: "dict"}[type(v)]
 
 
 def has_nul(v):
-    return "\x00" in json.dumps(v, ensure_ascii=False).replace("\\u0000", "\x00")
+    return "\\u0000" in json.dumps(v)
 
 
 def profile(table, items):
-    cols = c.COLUMNS[table]
+    print(f"\n## {table}: {len(items)} items")
     keys = collections.defaultdict(collections.Counter)
-    orders = collections.Counter()
-    for o in items:
-        orders[tuple(o)] += 1
-        for k, v in o.items():
-            keys[k][jtype(v)] += 1
-        if has_nul(o): blockers.append(f"{table}: an item contains a NUL character")
-    print(f"\n## {table}: {len(items)} items, {len(orders)} distinct key orders")
-    print(f"{'key':<16} {'present':>7}  types{'':<30} schema")
+    for i, o in enumerate(items):
+        if not isinstance(o, dict): blockers.append(f"{table}[{i}] is not an object"); continue
+        for k, v in o.items(): keys[k][jtype(v)] += 1
+        if has_nul(o): blockers.append(f"{table}[{i}] contains a NUL character")
     for k in sorted(keys, key=lambda k: -sum(keys[k].values())):
-        kind = cols.get(k)
-        bad = sum(n for t, n in keys[k].items() if kind and not c._fits(kind, {"null": None, "bool": True, "int": 1, "float": 0.5,
-                                                                              "float-whole": 1.0, "str": "", "list": [], "dict": {}}[t]))
-        where = "extra (no column)" if not kind else (f"{kind}" + (f"  ⚠ {bad} → extra" if bad else ""))
-        print(f"{k:<16} {sum(keys[k].values()):>7}  {dict(keys[k])!s:<35} {where}")
-        if not kind: notes.append(f"{table}.{k}: no column, kept in extra ({sum(keys[k].values())} items)")
-    missing = [k for k in cols if k not in keys]
-    if missing: print("columns never used:", ", ".join(missing))
-    return items
-
-
-def uniq(table, items, key):
-    vals = [o.get(key) for o in items if o.get(key) is not None]
-    d = len(vals) - len(set(vals))
-    if d: blockers.append(f"{table}.{key}: {d} duplicate value(s) but the column is UNIQUE/PK")
+        want = PROJECTED[table].get(k)
+        odd = sum(n for t, n in keys[k].items() if want and t not in (want, "null"))
+        flag = f"  column ({want})" + (f"  note: {odd} of another type -> column NULL" if odd else "") if want else ""
+        print(f"  {k:<16} {sum(keys[k].values()):>5}  {dict(keys[k])}{flag}")
+        if odd: notes.append(f"{table}.{k}: {odd} value(s) not {want}; kept in raw, column NULL")
+    if table in KEY:
+        k, rx = KEY[table]
+        vals = [o.get(k) for o in items if isinstance(o, dict)]
+        bad = sum(1 for v in vals if not isinstance(v, str) or not re.match(rx, v))
+        dup = len([v for v in vals if isinstance(v, str)]) - len({v for v in vals if isinstance(v, str)})
+        if bad: blockers.append(f"{table}.{k}: {bad} item(s) missing, not text, or wrong format (it is the primary key)")
+        if dup: blockers.append(f"{table}.{k}: {dup} duplicate(s) (it is the primary key)")
+    if table == "alerts":
+        e = [o.get("email_id") for o in items if isinstance(o, dict) and o.get("email_id")]
+        if len(e) != len(set(e)): notes.append(f"alerts.email_id: {len(e) - len(set(e))} repeat(s) (allowed, not unique)")
 
 
 t = json.load(open(os.path.join(D, "tracker_data.json")))
 print("# tracker_data.json top-level keys:", list(t))
 for k in t:
-    if k not in ("leads", "alerts", "vendors", "changelog"): print(f"  {k}: {jtype(t[k])} → app_state")
-uniq("leads", profile("leads", t.get("leads", [])), "id")
-A = profile("alerts", t.get("alerts", [])); uniq("alerts", A, "id"); uniq("alerts", A, "email_id")
-profile("vendors", t.get("vendors", []))
-profile("changelog", t.get("changelog", []))
+    if k == "changelog": print(f"  changelog: {len(t[k])} entries -> NOT migrated (decision 11/10)")
+    elif k not in ("leads", "alerts", "vendors"): print(f"  {k}: {jtype(t[k])} -> app_state")
+for name in ("leads", "alerts", "vendors"): profile(name, t.get(name, []))
 pp = os.path.join(D, "payments.json")
-if os.path.exists(pp): uniq("payments", profile("payments", json.load(open(pp))), "email_id")
+if os.path.exists(pp): profile("payments", json.load(open(pp)))
 for f in ("watch_state", "brief_latest", "brief_state", "brief_ack"):
     p = os.path.join(D, f + ".json")
     if not os.path.exists(p): print(f"\n{f}.json: not found"); continue
     v = json.load(open(p))
     print(f"\n{f}.json: {jtype(v)}" + (f", keys {list(v)}" if isinstance(v, dict) else ""))
+    if has_nul(v): blockers.append(f"{f}.json contains a NUL character")
     if f == "watch_state":
         s = v.get("seen", [])
-        print(f"  seen: {len(s)} keys, {len(s) - len(set(s))} duplicates")
-        if len(s) != len(set(s)): blockers.append("watch_state.seen has duplicates (seen_emails.key is the PK)")
-    if has_nul(v): blockers.append(f"{f}.json contains a NUL character")
+        print(f"  seen: {len(s)} keys -> emails table")
+        if len(s) != len(set(s)): blockers.append(f"watch_state.seen: {len(s) - len(set(s))} duplicate(s) (emails.key is the primary key)")
+        if s != sorted(s): notes.append("watch_state.seen is not sorted; rebuilt list will be sorted (same set)")
+        if not all(isinstance(x, str) for x in s): blockers.append("watch_state.seen has a non-text key")
 
 print("\n# Result")
 for n in notes: print("note:", n)
 for b in blockers: print("BLOCKER:", b)
-print(f"{len(blockers)} blocker(s), {len(notes)} key(s) going to extra")
+print(f"{len(blockers)} blocker(s), {len(notes)} note(s)")
 sys.exit(1 if blockers else 0)
