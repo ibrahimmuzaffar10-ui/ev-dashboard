@@ -12,6 +12,8 @@
 !docs/ROADMAP.md
 
 !evenv.py
+!db_codec.py
+!tests/test_db_codec.py
 !server.py
 !watch.py
 !calendar_sync.py
@@ -24,7 +26,11 @@
 !contracts/render_questionnaire.py
 
 !supabase/config.toml
+!supabase/migrations/*.sql
+!supabase/tests/*.sql
 
 !scripts/check_leaks.py
+!scripts/profile_keys.py
+!scripts/test_rls_live.py
 !.githooks/pre-commit
 !.githooks/pre-push

@@ -5,7 +5,7 @@ Read this first, then `docs/ROADMAP.md` (the plan and the source of truth for st
 ## What this is
 Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-person Houston wedding photography business: Eman shoots, Ibrahim (the user) runs the business. Today it runs **locally on Ibrahim's Mac** (Python stdlib server on `localhost:8787`, JSON files as the database). We are migrating it to **GitHub (this public repo) + Vercel Hobby (free) + Supabase Free**, phase by phase, per `docs/ROADMAP.md`. Mail/Zelle/brief/calendar syncs stay on the Mac permanently; a Next.js mobile-first rebuild comes later (Stage 3).
 
-**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · **next: Phase 2, schema v1.**
+**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · **Phase 2 drafted (schema v1), not applied: needs the live key profile + Ibrahim's approval.**
 
 ## Hard rules (from Ibrahim — never break)
 1. **Never delete or move existing files** in `~/EmanantHQ`, `~/Documents/Emanant Visuals`, or the Obsidian vault. Copy, don't move. Edits happen in this repo only. Scratch files you create yourself may be deleted (and must be, if they contain client data).
@@ -36,6 +36,11 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `contracts/render_contract.py`, `contracts/render_questionnaire.py` | DOCX/PDF renderers (python-docx + reportlab); contract wording is loaded from outside the repo |
 | `evenv.py` | Loads `.env.local` into `os.environ` (stdlib) |
 | `.env.local` | **Gitignored.** Real addresses, prices, paths. Names documented in `.env.example` |
+| `supabase/migrations/*.sql` | Schema migrations (v1 = Phase 2). Apply only after Ibrahim approves: `supabase db push` (dry run first) |
+| `supabase/tests/rls_test.sql`, `supabase_stub.sql` | Local RLS test on plain Postgres (stub mimics Supabase roles/auth/storage) |
+| `db_codec.py`, `tests/test_db_codec.py` | Lossless JSON object ↔ row codec (pos / key_order / extra) + tests |
+| `scripts/profile_keys.py` | Key names/types/counts of the live JSON vs the schema (prints no values) |
+| `scripts/test_rls_live.py` | Phase 2 live test with the anon key (needs test users in `.env.local`) |
 | `supabase/config.toml` | Supabase CLI config, linked to the project (aligned with remote — see pitfalls) |
 | `.gitignore` | **Allowlist**: everything ignored; a new file must be un-ignored on purpose |
 | `scripts/check_leaks.py`, `.githooks/pre-commit`, `.githooks/pre-push`, `.gitleaks.toml` | Leak checks (run automatically; `core.hooksPath=.githooks` is set) |
