@@ -5,7 +5,7 @@ Read this first, then `docs/ROADMAP.md` (the plan and the source of truth for st
 ## What this is
 Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-person Houston wedding photography business: Eman shoots, Ibrahim (the user) runs the business. Today it runs **locally on Ibrahim's Mac** (Python stdlib server on `localhost:8787`, JSON files as the database). We are migrating it to **GitHub (this public repo) + Vercel Hobby (free) + Supabase Free**, phase by phase, per `docs/ROADMAP.md`. Mail/Zelle/brief/calendar syncs stay on the Mac permanently; a Next.js mobile-first rebuild comes later (Stage 3).
 
-**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · Phase 2 ✅ (schema v1; live test 92/92) · Phase 3 ✅ (data + 23 files copied, verified exact; Mac still live) · **Next: Phase 4 data layer.**
+**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · Phase 2 ✅ (schema v1; live test 92/92) · Phase 3 ✅ (data + 23 files copied, verified exact; Mac still live) · Phase 4a ✅ (server on Supabase, 19/19) · **Next: 4b job routes, 4c outbox, 4d renderer/errors.**
 
 ## Hard rules (from Ibrahim — never break)
 1. **Never delete or move existing files** in `~/EmanantHQ`, `~/Documents/Emanant Visuals`, or the Obsidian vault. Copy, don't move. Edits happen in this repo only. Scratch files you create yourself may be deleted (and must be, if they contain client data).
@@ -34,6 +34,9 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `watch.py` | iCloud mail watcher (via `himalaya` CLI) → alerts; triggers `zelle_import.py` |
 | `zelle_import.py`, `brief.py`, `calendar_sync.py` | Zelle payment import, twice-daily brief, iCloud calendar sync (AppleScript) |
 | `contracts/render_contract.py`, `contracts/render_questionnaire.py` | DOCX/PDF renderers (python-docx + reportlab); contract wording is loaded from outside the repo |
+| `db.py` | Data layer: `EV_BACKEND=json` (default, files) or `supabase` (one transaction + advisory lock per save, as role `ev_server` via the pooler, verified TLS) |
+| `evtime.py` | Houston-time `now_ct()`/`today_ct()`: every date the app writes |
+| `requirements.txt` | pg8000 + tzdata (repo `.venv` on the Mac; Vercel later) |
 | `evenv.py` | Loads `.env.local` into `os.environ` (stdlib) |
 | `.env.local` | **Gitignored.** Real addresses, prices, paths. Names documented in `.env.example` |
 | `supabase/migrations/*.sql` | Schema migrations (v1 = Phase 2). Apply only after Ibrahim approves: `supabase db push` (dry run first) |
@@ -43,6 +46,9 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `supabase/tests/rls_sim_live.sql` | Signed-in live test with stand-in users, fully rolled back (expect `RESULT 58 pass, 0 fail.`) |
 | `scripts/migrate_data.py`, `scripts/verify_migration.py`, `scripts/migrate_files.py` | Phase 3: load a JSON snapshot (one transaction, re-runnable), prove the round trip exact, upload + SHA-verify contract files (manifest in `app_state`) |
 | `scripts/test_rls_live.py` | Phase 2 live test with the anon key (needs the seed, a test PDF and two test logins in `.env.local`) |
+| `supabase/supabase-ca.crt` | Supabase root CA certificates (public), from the installed CLI; used to verify the database connection |
+| `scripts/set_server_password.py` | Sets/rotates the `ev_server` password straight into `.env.local` (never shown) |
+| `scripts/test_phase4a.py` | Phase 4a test: cloud server = JSON server, parallel saves, folding deletes, CT dates, role limits, leaves Supabase unchanged (expect 19/19) |
 | `supabase/config.toml` | Supabase CLI config, linked to the project (aligned with remote — see pitfalls) |
 | `.gitignore` | **Allowlist**: everything ignored; a new file must be un-ignored on purpose |
 | `scripts/check_leaks.py`, `.githooks/pre-commit`, `.githooks/pre-push`, `.gitleaks.toml` | Leak checks (run automatically; `core.hooksPath=.githooks` is set) |
@@ -92,4 +98,6 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 - The Supabase connector/token can't list projects; use the CLI.
 - Leak check false positives: mark the line `leak-check: allow: <reason>`; never weaken the checker to get a commit through.
 - Live-code facts the schema/data layer must respect (from the adversarial review — details in `docs/ROADMAP.md`): `watch.py` marks emails seen **before** posting; IDs are `max+1` under a process-local `threading.LOCK`; `store()` must also write deletes (alert folding) and the changelog is insert-only; `brief.py`/`zelle_import.py`/`watch.py` write JSON files directly; optional keys are often **missing** (not null) and code relies on `.get(k, default)`; dates are text with `''` and nulls; Vercel's clock is UTC (use America/Chicago).
+- The Supabase DB certificate is not in the Mac trust store: always pass `supabase/supabase-ca.crt`; never disable verification. The pooler host is `aws-1-us-east-1` (aws-0 says tenant not found).
+- A role that writes the data tables needs EXECUTE on `private.j_text/j_num/j_bool` (generated columns).
 - macOS TCC: launchd jobs can't read `~/Documents` files they didn't create — keep job code outside `~/Documents`.

@@ -12,6 +12,9 @@
 !docs/ROADMAP.md
 
 !evenv.py
+!db.py
+!evtime.py
+!requirements.txt
 !server.py
 !watch.py
 !calendar_sync.py
@@ -24,6 +27,7 @@
 !contracts/render_questionnaire.py
 
 !supabase/config.toml
+!supabase/supabase-ca.crt
 !supabase/migrations/*.sql
 !supabase/tests/*.sql
 
@@ -33,5 +37,7 @@
 !scripts/migrate_data.py
 !scripts/verify_migration.py
 !scripts/migrate_files.py
+!scripts/set_server_password.py
+!scripts/test_phase4a.py
 !.githooks/pre-commit
 !.githooks/pre-push

@@ -9,6 +9,7 @@ from email.utils import make_msgid, formatdate
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import html as _html, tempfile
 import evenv
+import db, evtime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Data lives outside the repo (EV_DATA_DIR); the repo holds code only.
@@ -27,6 +28,8 @@ def icloud_pw():
     return subprocess.run(["security", "find-generic-password", "-s", "hermes-icloud", "-w"], capture_output=True, text=True, timeout=20).stdout.strip()
 
 def send_mail(to, subject, body, in_reply_to=None, attachments=()):
+    if db.CLOUD:  # cloud mode never sends mail itself: the Mac outbox does (Phase 4c)
+        raise RuntimeError("email sending is not available in cloud mode yet")
     msg = EmailMessage()
     msg["From"] = f"Eman | Emanant Visuals <{FROM_EMAIL}>"; msg["To"] = to; msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True); msg["Message-ID"] = make_msgid(domain="emanantvisuals.com")
@@ -143,7 +146,7 @@ def activate_signed(d, lead, pdf_bytes=None):
         except Exception as ex:
             notes.append(f"Questionnaire not sent: {ex}")
     A = d.setdefault("alerts", []); n = max([int(a["id"][1:]) for a in A] + [0]) + 1
-    A.append({"id": f"A{n:04d}", "at": datetime.datetime.now().isoformat(timespec="minutes"), "type": "contract_signed", "title": f"Contract signed: {lead['client']}",
+    A.append({"id": f"A{n:04d}", "at": evtime.now_ct().isoformat(timespec="minutes"), "type": "contract_signed", "title": f"Contract signed: {lead['client']}",
               "detail": "Payment plan is now live. " + " ".join(notes), "email_id": f"signed:{lead['id']}:{today()}", "from_email": "", "lead_id": lead["id"], "done": False, "unread": False})
     return notes
 
@@ -192,20 +195,22 @@ NUMS = {"total", "paid"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def today():
-    return datetime.date.today().isoformat()
+    return evtime.today_ct().isoformat()
 
 def load():
+    if db.CLOUD: return db.load()
     with open(DATA_PATH) as f:
         return json.load(f)
 
 def store(data, change):
+    if db.CLOUD: return db.store(data)  # no file backups / changelog in the cloud (Phase 7 backs up)
     os.makedirs(BACKUPS, exist_ok=True)
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    stamp = evtime.now_ct().strftime("%Y%m%d-%H%M%S-%f")
     shutil.copy2(DATA_PATH, os.path.join(BACKUPS, f"tracker_data.{stamp}.json"))
     olds = sorted(os.listdir(BACKUPS))
     for f in olds[:-200]:
         os.remove(os.path.join(BACKUPS, f))
-    data.setdefault("changelog", []).append(dict(change, at=datetime.datetime.now().isoformat(timespec="seconds"), by="dashboard"))
+    data.setdefault("changelog", []).append(dict(change, at=evtime.now_ct().isoformat(timespec="seconds"), by="dashboard"))
     tmp = DATA_PATH + ".tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, indent=1, ensure_ascii=False)
@@ -239,12 +244,15 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, html, "text/html")
         if self.path == "/api/data":
             d = load()
-            pays = json.load(open(PAY_PATH)) if os.path.exists(PAY_PATH) else []
+            pays = db.payments() if db.CLOUD else (json.load(open(PAY_PATH)) if os.path.exists(PAY_PATH) else [])
             return self._send(200, json.dumps({"today": today(), "leads": d["leads"], "vendors": d["vendors"], "payments": pays, "finance": d.get("finance", {}), "alerts": d.get("alerts", []), "ignore_senders": d.get("ignore_senders", []), "watch_senders": d.get("watch_senders", [])}, ensure_ascii=False))
         if self.path == "/api/brief":
             bp, ap = os.path.join(DATA_DIR, "brief_latest.json"), os.path.join(DATA_DIR, "brief_ack.json")
-            b = json.load(open(bp)) if os.path.exists(bp) else None
-            ack = json.load(open(ap)).get("id") if os.path.exists(ap) else None
+            if db.CLOUD:
+                b = db.read_doc("brief_latest"); ack = (db.read_doc("brief_ack") or {}).get("id")
+            else:
+                b = json.load(open(bp)) if os.path.exists(bp) else None
+                ack = json.load(open(ap)).get("id") if os.path.exists(ap) else None
             return self._send(200, json.dumps({"brief": b, "acked": bool(b) and ack == b.get("id")}, ensure_ascii=False))
         if self.path == "/calendar":
             return self._send(200, open(os.path.join(HERE, "calendar.html")).read(), "text/html")
@@ -267,7 +275,7 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-            with LOCK:
+            with db.locked(LOCK):
                 d = load()
                 if self.path == "/api/update":
                     lead = next((l for l in d["leads"] if l.get("id") == body.get("id")), None)
@@ -298,7 +306,9 @@ class H(BaseHTTPRequestHandler):
                     store(d, {"id": al["id"], "client": al.get("title", ""), "field": "alert", "old": None, "new": "done" if al["done"] else "reopened"})
                     return self._send(200, json.dumps({"alert": al}, ensure_ascii=False))
                 if self.path == "/api/brief-ack":
-                    json.dump({"id": body.get("id"), "at": datetime.datetime.now().isoformat(timespec="minutes")}, open(os.path.join(DATA_DIR, "brief_ack.json"), "w"))
+                    ack = {"id": body.get("id"), "at": evtime.now_ct().isoformat(timespec="minutes")}
+                    if db.CLOUD: db.write_doc("brief_ack", ack)
+                    else: json.dump(ack, open(os.path.join(DATA_DIR, "brief_ack.json"), "w"))
                     return self._send(200, "{}")
                 if self.path == "/api/open-folder":
                     if self.client_address[0] != "127.0.0.1": return self._send(403, "local only", "text/plain")
@@ -309,7 +319,7 @@ class H(BaseHTTPRequestHandler):
                 if self.path == "/api/contract/create":
                     lead = next((l for l in d["leads"] if l.get("id") == body.get("id")), None)
                     if not lead: return self._send(404, "lead not found", "text/plain")
-                    issue = today(); sign_by = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+                    issue = today(); sign_by = (evtime.today_ct() + datetime.timedelta(days=7)).isoformat()
                     days = [x for x in body.get("days", []) if x.get("date")]
                     plan = [x for x in body.get("plan", []) if x.get("amount") not in (None, "")]
                     for x in plan: x["amount"] = validate("total", x["amount"])
@@ -389,13 +399,13 @@ class H(BaseHTTPRequestHandler):
                         tgt.setdefault("email_ids", []).append(eid)
                         tgt["count"] = tgt.get("count", 1) + 1
                         tgt["detail"] = (f"[{(body.get('at') or '')[:16]}] " + str(body.get("detail", ""))[:300] + "\n" + tgt.get("detail", ""))[:1500]
-                        tgt["at"] = max(tgt.get("at") or "", body.get("at") or datetime.datetime.now().isoformat(timespec="minutes"))
+                        tgt["at"] = max(tgt.get("at") or "", body.get("at") or evtime.now_ct().isoformat(timespec="minutes"))
                         tgt["unread"] = True
                         if body.get("lead_id"): tgt["lead_id"] = body["lead_id"]
                         store(d, {"id": tgt["id"], "client": tgt["title"], "field": "alert", "old": None, "new": "merged"})
                         return self._send(200, json.dumps({"alert": tgt, "merged": True}, ensure_ascii=False))
                     n = max([int(a["id"][1:]) for a in A] + [0]) + 1
-                    al = {"id": f"A{n:04d}", "at": body.get("at") or datetime.datetime.now().isoformat(timespec="minutes"), "type": body.get("type", "email"),
+                    al = {"id": f"A{n:04d}", "at": body.get("at") or evtime.now_ct().isoformat(timespec="minutes"), "type": body.get("type", "email"),
                           "title": str(body.get("title", ""))[:200], "detail": str(body.get("detail", ""))[:600], "email_id": body.get("email_id"),
                           "from_email": body.get("from_email", ""), "lead_id": body.get("lead_id"), "done": bool(body.get("done")), "unread": bool(body.get("unread", True))}
                     lead = None
