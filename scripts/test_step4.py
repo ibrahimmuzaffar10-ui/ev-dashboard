@@ -42,7 +42,7 @@ def start(port, extra):
 
 def http(port, path, body=None):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "X-EV-Job": os.environ.get("EV_JOB_TOKEN", "")})
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
             return r.status, r.read()

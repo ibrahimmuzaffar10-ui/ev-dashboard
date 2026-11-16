@@ -38,6 +38,7 @@
 
 !scripts/check_leaks.py
 !scripts/test_local_guard.py
+!scripts/test_rollback_keys.py
 !scripts/profile_keys.py
 !scripts/test_rls_live.py
 !scripts/migrate_data.py

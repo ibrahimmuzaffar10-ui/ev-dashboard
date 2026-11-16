@@ -27,8 +27,8 @@ def job(label, script, env, interval=None, keepalive=False, log=None, at=None, a
         d["StartInterval"] = interval
     if keepalive:
         d["KeepAlive"] = True
-    if at:
-        d["StartCalendarInterval"] = {"Hour": at[0], "Minute": at[1]}
+    if at:      # (hour, minute); hour None = every hour at that minute
+        d["StartCalendarInterval"] = {"Minute": at[1]} if at[0] is None else {"Hour": at[0], "Minute": at[1]}
         d["RunAtLoad"] = False
     return d
 
@@ -47,10 +47,15 @@ def jobs(mode):
         base = {"EV_BACKEND": "supabase"}
         return [
             job("com.emanantvisuals.dashboard", "server.py", dict(base, EV_PORT="8787"), keepalive=True, log="dashboard"),
-            job("com.emanantvisuals.watch", "watch.py", base, interval=60, log="watch"),   # step 7: every minute (lock file stops overlaps)
+            # every 5 min, like the old live job: at 1 min, ~1,440 runs/day each fetch the whole dataset
+            # (Supabase Free egress 5 GB/month) and log in to iCloud 3x (review finding H3)
+            job("com.emanantvisuals.watch", "watch.py", base, interval=300, log="watch"),
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
             job("com.emanantvisuals.backup", "scripts/backup.py", base, at=(2, 0), log="backup"),   # nightly 2 AM
+            # moved off Hermes cron (review finding: Hermes would keep running the old JSON copies)
+            job("com.emanantvisuals.brief", "brief.py", base, at=(None, 2), log="brief"),       # hourly at :02; brief.py decides 7 AM / 10 PM
+            job("com.emanantvisuals.calendar", "calendar_sync.py", base, interval=1800, log="calendar"),
         ]
     sys.exit("mode must be shadow or prod")
 

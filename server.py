@@ -274,6 +274,8 @@ class H(BaseHTTPRequestHandler):
                 b = json.load(open(bp)) if os.path.exists(bp) else None
                 ack = json.load(open(ap)).get("id") if os.path.exists(ap) else None
             return self._send(200, json.dumps({"brief": b, "acked": bool(b) and ack == b.get("id")}, ensure_ascii=False))
+        if self.path == "/api/outbox":
+            return self._send(200, json.dumps(db.outbox_list(), ensure_ascii=False))
         if self.path == "/calendar":
             return self._send(200, open(os.path.join(HERE, "calendar.html")).read(), "text/html")
         if self.path == "/api/calendar":
@@ -301,6 +303,12 @@ class H(BaseHTTPRequestHandler):
         if not self._local_guard(post=True): return
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            if self.path == "/api/outbox-action":          # the outbox has its own rows; no dataset save
+                try:
+                    st = db.outbox_action(body.get("id"), body.get("action"))
+                except ValueError as ex:
+                    return self._send(409, str(ex), "text/plain")
+                return self._send(200, json.dumps({"status": st}))
             with db.locked(LOCK):
                 d = load()
                 if self.path == "/api/update":

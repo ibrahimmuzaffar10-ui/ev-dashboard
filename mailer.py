@@ -47,19 +47,59 @@ def read_files(paths):
     return out
 
 
+class NotSent(Exception):
+    """The email certainly did not go out. network=True: a connection problem (try again later
+    without counting it as a failed try)."""
+    def __init__(self, msg, network=False):
+        super().__init__(msg); self.network = network
+
+
+class MaybeSent(Exception):
+    """The connection broke while the email was being handed over: it may have gone out. Never
+    re-send automatically (a client would get it twice)."""
+
+
 def icloud_pw():
-    return subprocess.run(["security", "find-generic-password", "-s", "hermes-icloud", "-w"],
-                          capture_output=True, text=True, timeout=20).stdout.strip()
+    r = subprocess.run(["security", "find-generic-password", "-s", "hermes-icloud", "-w"],
+                       capture_output=True, text=True, timeout=20)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise NotSent("iCloud app password not found in the Keychain")
+    return r.stdout.strip()
+
+
+NET = (OSError, smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError)   # socket.timeout is an OSError
 
 
 def send(msg):
-    """Send over iCloud SMTP, then keep a copy in Sent so Eman sees it in Mail."""
+    """Send over iCloud SMTP, then keep a copy in Sent so Eman sees it in Mail.
+    Raises NotSent (safe to retry) or MaybeSent (don't retry); anything after the server accepted
+    the email (QUIT, the Sent copy) is ignored: the email is sent."""
     login = evenv.need("EV_ICLOUD_LOGIN")
     pw = icloud_pw()
-    with smtplib.SMTP("smtp.mail.me.com", 587, timeout=30) as s:
-        s.starttls(); s.login(login, pw); s.send_message(msg)
     try:
-        im = imaplib.IMAP4_SSL("imap.mail.me.com"); im.login(login, pw)
+        s = smtplib.SMTP("smtp.mail.me.com", 587, timeout=30)
+    except NET as ex:
+        raise NotSent(f"can't reach iCloud mail: {ex}", network=True)
+    try:
+        try:
+            s.starttls(); s.login(login, pw)
+        except NET as ex:
+            raise NotSent(f"connection to iCloud mail dropped: {ex}", network=True)
+        except smtplib.SMTPException as ex:
+            raise NotSent(f"iCloud refused the login: {ex}")
+        try:
+            s.send_message(msg)
+        except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as ex:
+            raise NotSent(f"iCloud refused the email: {ex}")
+        except (NET, smtplib.SMTPException) as ex:
+            raise MaybeSent(f"connection broke while sending: {ex}")
+    finally:
+        try: s.quit()
+        except Exception:
+            try: s.close()
+            except Exception: pass
+    try:
+        im = imaplib.IMAP4_SSL("imap.mail.me.com", timeout=30); im.login(login, pw)
         im.append('"Sent Messages"', "\\Seen", imaplib.Time2Internaldate(time.time()), msg.as_bytes()); im.logout()
     except Exception:
         pass

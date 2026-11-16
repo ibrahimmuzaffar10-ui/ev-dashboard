@@ -53,7 +53,10 @@ q = db._read_only(lambda c: c.run("""
          (select count(*) from public.v_lead_money where mismatch),
          (select count(*) from public.leads where legacy_shape is not null)"""))[0]
 check("every lead has a client; every event day has a lead", q[0] == 0 and q[1] == 0)
-check("links kept: alerts->leads, payments->leads", q[2] == 13 and q[3] == 17, f"{q[2]} / {q[3]}")
+_ids = {l["id"] for l in want["leads"]}            # expected links counted from the snapshot itself
+_wa = sum(1 for a in want.get("alerts", []) if a.get("lead_id") in _ids)
+_wp = sum(1 for p in load("payments") if p.get("lead_id") in _ids)
+check("links kept: alerts->leads, payments->leads", q[2] == _wa and q[3] == _wp, f"{q[2]} / {q[3]} (want {_wa} / {_wp})")
 print(f"(info) leads where typed 'paid' differs from installments+payments: {q[4]}  ·  leads with a legacy_shape note: {q[5]}")
 
 # the check must be able to fail

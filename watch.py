@@ -135,6 +135,18 @@ def heartbeat(ok):
         except Exception as ex: print("healthcheck ping failed:", ex)
 
 
+def search_all(mailbox, since, size=200, max_pages=25):
+    """Every envelope since `since`, page by page (a laptop offline for weeks can have more than one
+    page; the old single page silently skipped the rest once `since` moved on)."""
+    out = []
+    for page in range(1, max_pages + 1):
+        got = hj("envelope", "search", "-m", mailbox, "-s", str(size), "-p", str(page), f"after {since} order by date asc")["envelopes"]
+        out.extend(got)
+        if len(got) < size:
+            return out
+    raise RuntimeError(f"{mailbox}: more than {size * max_pages} emails since {since}; not marking the run OK")
+
+
 def main():
     os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
     lock = open(LOCK_PATH, "w")
@@ -147,9 +159,9 @@ def main():
     all_ok = True
     # always look back 3 days (IMAP "after" is strict and mail can arrive late around midnight); `seen` dedupes
     since = min(st.get("since") or "9999", (evtime.today_ct() - datetime.timedelta(days=3)).isoformat())
-    envs = hj("envelope", "search", "-s", "300", f"after {since} order by date asc")["envelopes"]
+    envs = search_all("Inbox", since)
     try:  # also screen Junk so inquiries caught by the spam filter aren't missed
-        for j in hj("envelope", "search", "-m", "Junk", "-s", "100", f"after {since} order by date asc")["envelopes"]:
+        for j in search_all("Junk", since):
             j["junk"] = True; envs.append(j)
     except Exception as ex:
         print("junk scan skipped:", ex)
@@ -265,7 +277,10 @@ def main():
     for l in data["leads"]:
         t = l.get("contract_terms") or {}
         if l.get("contract") != "sent" or not t.get("sign_by"): continue
-        left = (datetime.date.fromisoformat(t["sign_by"]) - evtime.today_ct()).days
+        try:
+            left = (datetime.date.fromisoformat(str(t["sign_by"])[:10]) - evtime.today_ct()).days
+        except ValueError:
+            print("bad sign-by date on", l.get("id")); continue      # one bad date must not stop the whole run
         for mark, msg in ((3, "3 days left to sign — send a friendly reminder"), (1, "1 day left to sign — last reminder"),
                           (0, "Sign-by deadline today — final notice: unsigned contracts become invalid; the date is not held"), (-1, "Sign-by date passed — offer expired; release the date or re-issue")):
             if (left == mark) or (mark == -1 and left < 0):

@@ -11,6 +11,7 @@ import concurrent.futures as cf, datetime, hashlib, json, os, socket, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+import evenv  # noqa: E402,F401  (loads .env.local: EV_JOB_TOKEN)
 import evtime  # noqa: E402
 import legacy  # noqa: E402
 
@@ -51,7 +52,7 @@ def start(port, backend, data_dir, tz=None):
 
 def http(port, path, body=None):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+                                 headers={"Content-Type": "application/json", "X-EV-Job": os.environ.get("EV_JOB_TOKEN", "")}, method="GET" if body is None else "POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.status, r.read()

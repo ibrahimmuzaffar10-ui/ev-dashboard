@@ -527,3 +527,44 @@ def outbox_enqueue(to, subject, body, in_reply_to=None, files=()):
 def user_is_allowed(uid):
     """True only if this Supabase user id is on the allowlist (asks about one id; cannot list it)."""
     return bool(_read_only(lambda c: c.run("select private.user_is_allowed(cast(:u as uuid))", u=uid)[0][0]))
+
+
+# ---------------- outbox, as seen from the dashboard (review fix #5) ----------------
+def outbox_list(days=14):
+    """Emails not (yet) sent, plus the Mac sender's last check-in, for the "Emails waiting" banner.
+    JSON mode has no outbox (mail is sent immediately)."""
+    if not CLOUD:
+        return {"rows": [], "sender_at": None}
+    rows = _read_only(lambda c: c.run(
+        "select outbox_id, to_addr, subject, status, attempts, last_error, "
+        "to_char(created_at at time zone 'America/Chicago', 'YYYY-MM-DD\"T\"HH24:MI') "
+        "from public.outbox where status <> 'sent' and created_at > now() - make_interval(days => :d) "
+        "order by outbox_id desc", d=days))
+    hb = read_doc("heartbeat_outbox") or {}
+    return {"rows": [{"id": r[0], "to": r[1], "subject": r[2], "status": r[3], "attempts": r[4], "error": r[5], "queued": r[6]}
+                     for r in rows], "sender_at": hb.get("at")}
+
+
+def outbox_action(oid, action):
+    """cancel: queued/failed/unknown -> cancelled.  retry ("Send again"): failed/unknown/cancelled ->
+    queued now, tries reset, age reset (a person decided it is still right). Returns the new status."""
+    allowed = {"cancel": (("queued", "failed", "unknown"), "status = 'cancelled', last_error = 'cancelled from the dashboard'"),
+               "retry": (("failed", "unknown", "cancelled"), "status = 'queued', attempts = 0, next_try_at = now(), "
+                                                               "created_at = now(), last_error = null")}
+    if action not in allowed:
+        raise ValueError("bad action")
+    frm, setsql = allowed[action]
+    c = _connect()
+    try:
+        c.run("begin")
+        got = c.run(f"update public.outbox set {setsql} where outbox_id = :o and status = any(:f) returning status",
+                    o=int(oid), f=list(frm))
+        c.run("commit")
+    except Exception:
+        c.run("rollback")
+        raise
+    finally:
+        c.close()
+    if not got:
+        raise ValueError("this email can't be changed now (it may already be sending or sent)")
+    return got[0][0]

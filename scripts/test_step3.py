@@ -26,7 +26,8 @@ def check(name, ok, got=""):
 
 
 def http(path, body):
-    req = urllib.request.Request("http://127.0.0.1:8789" + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    req = urllib.request.Request("http://127.0.0.1:8789" + path, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "X-EV-Job": os.environ.get("EV_JOB_TOKEN", "")})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.status, json.loads(r.read())
@@ -46,9 +47,9 @@ def w(sql, **kw):
         c.close()
 
 
-def sender(dry=DRY):
+def sender(dry=DRY, **extra):
     env = dict(os.environ, EV_BACKEND="supabase", EV_API="http://127.0.0.1:8789", EV_OUTBOX_DRY=dry,
-               EV_OUTBOX_LOCK=os.path.join(SCRATCH, "outbox.lock"))
+               EV_OUTBOX_LOCK=os.path.join(SCRATCH, "outbox.lock"), **extra)
     p = subprocess.run([PY, os.path.join(ROOT, "outbox_send.py")], env=env, capture_output=True, text=True, timeout=300)
     return p.returncode, (p.stdout + p.stderr).strip()
 
@@ -132,6 +133,44 @@ try:
     rc, out = sender()
     fcntl.flock(lock, fcntl.LOCK_UN); lock.close()
     check("G. overlapping sender refused", "another run is still going" in out)
+
+    # ---- H. review fix #5/#6: offline doesn't use up tries; maybe-sent is never re-sent; old email waits for a person
+    w("update public.outbox set status = 'cancelled' where status = 'queued'")
+    db.outbox_enqueue(FE, "TEST offline", "TEST")
+    rc, out = sender(EV_OUTBOX_DRY_FAIL="network")
+    row = q("select status, attempts, next_try_at > now() from public.outbox where subject = 'TEST offline'")[0]
+    check("H. no connection -> queued again, try NOT used up", row == ["queued", 0, True], str(row))
+    db.outbox_enqueue(FE, "TEST maybe", "TEST")
+    w("update public.outbox set status = 'cancelled' where subject = 'TEST offline'")
+    before = set(os.listdir(DRY))
+    rc, out = sender(EV_OUTBOX_DRY_FAIL="maybe")
+    row = q("select outbox_id, status from public.outbox where subject = 'TEST maybe'")[0]
+    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-unknown:{row[0]}")[0][0]
+    rc, out = sender()
+    row2 = q("select status from public.outbox where subject = 'TEST maybe'")[0][0]
+    check("H. broke while sending -> 'unknown' + alert, and NOT sent on the next run", row[1] == "unknown" and alerted == 1 and row2 == "unknown" and set(os.listdir(DRY)) == before)
+    db.outbox_enqueue(FE, "TEST stale", "TEST")
+    w("update public.outbox set created_at = now() - interval '13 hours' where subject = 'TEST stale'")
+    before = set(os.listdir(DRY))
+    rc, out = sender()
+    row = q("select outbox_id, status from public.outbox where subject = 'TEST stale'")[0]
+    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-old:{row[0]}")[0][0]
+    check("H. waited > 12 h -> not sent late; 'failed' + alert", row[1] == "failed" and alerted == 1 and set(os.listdir(DRY)) == before)
+
+    # ---- I. the dashboard's "Emails waiting" banner: list, Cancel, Send again
+    with urllib.request.urlopen("http://127.0.0.1:8789/api/outbox", timeout=30) as r:
+        ob = json.loads(r.read())
+    subs = {x["subject"]: x["status"] for x in ob["rows"]}
+    check("I. banner lists unsent emails (not sent ones) + sender check-in", subs.get("TEST stale") == "failed" and subs.get("TEST maybe") == "unknown"
+          and "Re: TEST" not in subs and bool(ob["sender_at"]), f"{len(subs)} listed")
+    st1, r1 = http("/api/outbox-action", {"id": row[0], "action": "retry"})
+    rc, out = sender()
+    after = q("select status from public.outbox where subject = 'TEST stale'")[0][0]
+    st2, r2 = http("/api/outbox-action", {"id": row[0], "action": "cancel"})
+    mrow = q("select outbox_id from public.outbox where subject = 'TEST maybe'")[0][0]
+    st3, r3 = http("/api/outbox-action", {"id": mrow, "action": "cancel"})
+    check("I. Send again -> sent; can't cancel a sent email; Cancel works", st1 == 200 and after == "sent" and st2 == 409 and st3 == 200
+          and q("select status from public.outbox where outbox_id = :o", o=mrow)[0][0] == "cancelled", f"{st1}/{after}/{st2}/{st3}")
 finally:
     for p in procs:
         p.terminate()

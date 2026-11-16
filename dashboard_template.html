@@ -114,6 +114,10 @@ table.mini{width:100%;border-collapse:collapse;margin-top:4px}table.mini th{posi
     <button class="btn primary" id="addBtn">+ Add lead</button>
   </div>
 </header>
+<div id="outbox" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:var(--yb);color:var(--y);border:1px solid rgba(138,101,0,.25);font-size:13px">
+  <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><b id="obTitle"></b><button class="btn" id="obToggle" style="padding:4px 10px;font-size:12px">Show</button></div>
+  <div id="obList" style="display:none;margin-top:8px"></div>
+</div>
 <div class="kpis" id="kpis"></div>
 <div class="card">
   <div class="toolbar">
@@ -487,6 +491,32 @@ document.getElementById('addBtn').onclick=()=>{alertForLead=null;F.reset();F.ele
 dlg.addEventListener('close',async()=>{if(dlg.returnValue!=='ok')return;const body=Object.fromEntries(new FormData(F));
   try{const res=await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
     const nl=(await res.json()).lead;DATA.leads.push(nl);toast('Lead added ✓');if(alertForLead){await alertAct(alertForLead.id,'done',nl.id);alertForLead=null}render()}catch(e){toast('Not added: '+e.message,true)}});
+
+// Emails waiting to send (review fix #5): in cloud mode the Mac sends queued email, so show what's waiting
+const OB_LABEL={queued:'Waiting',sending:'Sending',failed:'Not sent',unknown:'Check Sent',cancelled:'Cancelled'};
+async function loadOutbox(){
+  if(!LIVE)return;
+  let d;try{d=await (await fetch('/api/outbox')).json()}catch(e){return}
+  const box=document.getElementById('outbox'),rows=(d.rows||[]).filter(r=>r.status!=='cancelled');
+  if(!rows.length){box.style.display='none';return}
+  const waiting=rows.filter(r=>['queued','sending'].includes(r.status)).length,stuck=rows.length-waiting;
+  const seen=d.sender_at?` · Mac last checked ${fmtTime(d.sender_at)}`:' · Mac sender hasn\'t checked in yet';
+  document.getElementById('obTitle').textContent=`✉️ ${waiting?waiting+' email'+(waiting>1?'s':'')+' waiting to send (they go out when the Mac is online)':''}${waiting&&stuck?' · ':''}${stuck?stuck+' need'+(stuck>1?'':'s')+' a look':''}${seen}`;
+  document.getElementById('obList').innerHTML=rows.map(r=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid rgba(138,101,0,.15)">
+    <span class="pill" style="background:var(--panel)">${esc(OB_LABEL[r.status]||r.status)}</span>
+    <span style="flex:1;min-width:180px"><b>${esc(r.subject)}</b> → ${esc(r.to==='self'?'Eman':r.to)}<br><span style="opacity:.8">queued ${esc(fmtTime(r.queued))}${r.error?' · '+esc(r.error):''}</span></span>
+    ${['queued','failed','unknown'].includes(r.status)?`<button class="btn" data-ob="cancel" data-id="${r.id}" style="padding:4px 10px;font-size:12px">Cancel</button>`:''}
+    ${['failed','unknown'].includes(r.status)?`<button class="btn primary" data-ob="retry" data-id="${r.id}" style="padding:4px 10px;font-size:12px">Send again</button>`:''}
+  </div>`).join('');
+  box.style.display='block';
+}
+function fmtTime(s){if(!s)return'';const [d,t]=String(s).split('T');return (d===TODAY?'today':fmt(d))+(t?' '+t.slice(0,5):'')}
+document.getElementById('obToggle').onclick=()=>{const l=document.getElementById('obList'),open=l.style.display==='none';l.style.display=open?'block':'none';document.getElementById('obToggle').textContent=open?'Hide':'Show'};
+document.getElementById('obList').addEventListener('click',async e=>{const b=e.target.closest('button[data-ob]');if(!b)return;
+  if(b.dataset.ob==='retry'&&!confirm('Send this email now? Only do this if it is still correct (and, for "Check Sent", it is NOT already in Mail › Sent).'))return;
+  try{const res=await fetch('/api/outbox-action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+b.dataset.id,action:b.dataset.ob})});
+    if(!res.ok)throw new Error(await res.text());toast(b.dataset.ob==='retry'?'Queued to send ✓':'Cancelled ✓');loadOutbox()}catch(err){toast('Not changed: '+err.message,true)}});
+setInterval(loadOutbox,60000);
 async function boot(){
   DATA = LIVE ? await (await fetch('/api/data')).json() : BOOT;
   TODAY = DATA.today;
@@ -496,6 +526,7 @@ async function boot(){
   document.getElementById('mode').innerHTML=LIVE?'<span class="dot"></span>Live · changes save automatically':'<span class="dot off"></span>Read-only snapshot';
   if(!LIVE) document.getElementById('addBtn').style.display='none';
   render();
+  loadOutbox();
 }
 boot();
 </script></body></html>

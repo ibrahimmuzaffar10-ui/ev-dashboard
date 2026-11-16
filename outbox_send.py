@@ -7,6 +7,12 @@ For each queued email: claim it (status 'sending'), send it from Eman's iCloud, 
 * Interrupted send (left in 'sending' > 15 min, e.g. the Mac slept mid-send): NEVER re-sent
   automatically, because it may already have gone out. It becomes 'unknown' and an alert asks a
   person to check Sent and resend by hand if needed.
+* No connection (Wi-Fi down, iCloud unreachable): back to 'queued' in 2 min WITHOUT using up a try.
+* Connection broke while handing the email over: it may have gone out, so 'unknown' + alert (never
+  re-sent automatically). Anything after iCloud accepted it (QUIT, Sent copy) counts as sent.
+* Waited too long (EV_OUTBOX_MAX_AGE_H, default 12 h, e.g. the Mac was off): NOT sent late
+  automatically; 'failed' + alert, and the dashboard's "Send again" sends it if it's still right.
+* Nothing is held open in the database while sending.
 * One run at a time (lock file). EV_OUTBOX_DRY=<folder>: write .eml files there instead of sending.
 
   .venv/bin/python outbox_send.py
@@ -21,13 +27,14 @@ API = os.environ.get("EV_API", "http://127.0.0.1:8787")
 DRY = os.environ.get("EV_OUTBOX_DRY")
 MAX_TRIES = 5
 STALE_MIN = 15
+MAX_AGE_H = float(os.environ.get("EV_OUTBOX_MAX_AGE_H", "12"))
 LOCK_PATH = os.path.expanduser(os.environ.get("EV_OUTBOX_LOCK", "~/Library/Caches/emanant-hq/outbox.lock"))
 
 
 def alert(title, detail, key):
     """Tell a person on the dashboard (deduped by key). Never raises."""
     try:
-        req = urllib.request.Request(API + "/api/alert-new", headers={"Content-Type": "application/json"}, data=json.dumps(
+        req = urllib.request.Request(API + "/api/alert-new", headers={"Content-Type": "application/json", "X-EV-Job": os.environ.get("EV_JOB_TOKEN", "")}, data=json.dumps(
             {"type": "unclear", "title": title[:200], "detail": detail[:600], "email_id": key}).encode())
         urllib.request.urlopen(req, timeout=30).read()
         return True
@@ -48,12 +55,18 @@ def tx(c, sql, **kw):
 
 
 def send_one(c, row):
+    """Build and send one email. Attachments are read in their own short transaction, so no
+    database transaction is open while talking to iCloud."""
     oid, mid, to, subject, body, reply = row
-    files = [(n, t, bytes(d)) for n, t, d in c.run(
+    files = [(n, t, bytes(d)) for n, t, d in tx(c,
         "select filename, content_type, data from public.outbox_files where outbox_id = :o order by position", o=oid)]
     to = evenv.need("EV_FROM_EMAIL") if to == mailer.SELF else to
     msg = mailer.build(to, subject, body, reply, files, message_id=mid)
     if DRY:
+        if os.environ.get("EV_OUTBOX_DRY_FAIL") == "network":
+            raise mailer.NotSent("test: no connection", network=True)
+        if os.environ.get("EV_OUTBOX_DRY_FAIL") == "maybe":
+            raise mailer.MaybeSent("test: connection broke while sending")
         os.makedirs(DRY, exist_ok=True)
         with open(os.path.join(DRY, f"{oid}.eml"), "wb") as fh:
             fh.write(msg.as_bytes())
@@ -75,6 +88,11 @@ def main():
         for oid, subject in tx(c, "update public.outbox set status = 'unknown', last_error = 'interrupted while sending' "
                                   "where status = 'sending' and claimed_at < now() - make_interval(mins => :m) returning outbox_id, subject", m=STALE_MIN):
             alert("Email may not have been sent: check Sent", f"“{subject}” was interrupted while sending. Check Mail › Sent; resend by hand if it isn't there.", f"outbox-unknown:{oid}")
+        # waited too long (Mac off for hours): don't send late without a person deciding
+        for oid, subject in tx(c, "update public.outbox set status = 'failed', last_error = 'waited too long: not sent automatically' "
+                                  "where status = 'queued' and created_at < now() - (:h * interval '1 hour') returning outbox_id, subject", h=MAX_AGE_H):
+            alert("Email not sent: waited too long", f"“{subject}” waited over {MAX_AGE_H:g} hours (the Mac was offline) and was not sent "
+                  "automatically. Check it is still right, then use Send again on the dashboard (Emails waiting).", f"outbox-old:{oid}")
         while True:
             got = tx(c, "update public.outbox set status = 'sending', claimed_at = now(), attempts = attempts + 1 "
                         "where outbox_id = (select outbox_id from public.outbox where status = 'queued' and next_try_at <= now() "
@@ -84,21 +102,32 @@ def main():
                 break
             row, attempts = got[0][:6], got[0][6]
             try:
-                c.run("begin"); send_one(c, row); c.run("commit")
-            except Exception as ex:
-                try: c.run("rollback")
-                except Exception: pass
-                err = str(ex)[:300]
-                if attempts >= MAX_TRIES:
-                    tx(c, "update public.outbox set status = 'failed', last_error = :e where outbox_id = :o", e=err, o=row[0])
-                    alert("Email could not be sent", f"“{row[3]}” failed {attempts} times: {err}", f"outbox-failed:{row[0]}")
-                else:
-                    tx(c, "update public.outbox set status = 'queued', last_error = :e, "
-                          "next_try_at = now() + make_interval(mins => :w) where outbox_id = :o", e=err, w=2 ** (attempts - 1), o=row[0])
+                send_one(c, row)
+            except mailer.MaybeSent as ex:
+                tx(c, "update public.outbox set status = 'unknown', last_error = :e where outbox_id = :o", e=str(ex)[:300], o=row[0])
+                alert("Email may not have been sent: check Sent", f"“{row[3]}”: {str(ex)[:200]}. Check Mail › Sent; use Send again only if it isn't there.", f"outbox-unknown:{row[0]}")
                 failed += 1
                 continue
-            tx(c, "update public.outbox set status = 'sent', sent_at = now(), last_error = null where outbox_id = :o", o=row[0])
-            sent += 1
+            except mailer.NotSent as ex:
+                if ex.network:              # offline: try again soon, don't use up a try; stop this run
+                    tx(c, "update public.outbox set status = 'queued', attempts = attempts - 1, last_error = :e, "
+                          "next_try_at = now() + interval '2 minutes' where outbox_id = :o", e=str(ex)[:300], o=row[0])
+                    failed += 1
+                    break
+                err = str(ex)[:300]
+            except Exception as ex:
+                err = str(ex)[:300]
+            else:
+                tx(c, "update public.outbox set status = 'sent', sent_at = now(), last_error = null where outbox_id = :o", o=row[0])
+                sent += 1
+                continue
+            if attempts >= MAX_TRIES:
+                tx(c, "update public.outbox set status = 'failed', last_error = :e where outbox_id = :o", e=err, o=row[0])
+                alert("Email could not be sent", f"“{row[3]}” failed {attempts} times: {err}", f"outbox-failed:{row[0]}")
+            else:
+                tx(c, "update public.outbox set status = 'queued', last_error = :e, "
+                      "next_try_at = now() + make_interval(mins => :w) where outbox_id = :o", e=err, w=2 ** (attempts - 1), o=row[0])
+            failed += 1
     finally:
         c.close()
     try:
