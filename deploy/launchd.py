@@ -52,7 +52,8 @@ def jobs(mode):
             job("com.emanantvisuals.watch", "watch.py", base, interval=300, log="watch"),
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
-            job("com.emanantvisuals.backup", "scripts/backup.py", base, at=(2, 0), log="backup"),   # nightly 2 AM
+            # hourly, but only backs up once per Houston day (a sleeping laptop at 2 AM no longer skips the day)
+            job("com.emanantvisuals.backup", "scripts/backup.py", base, interval=3600, log="backup", args=("--if-due",)),
             # moved off Hermes cron (review finding: Hermes would keep running the old JSON copies)
             job("com.emanantvisuals.brief", "brief.py", base, at=(None, 2), log="brief"),       # hourly at :02; brief.py decides 7 AM / 10 PM
             job("com.emanantvisuals.calendar", "calendar_sync.py", base, interval=1800, log="calendar"),
