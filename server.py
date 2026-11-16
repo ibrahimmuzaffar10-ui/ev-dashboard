@@ -220,6 +220,15 @@ def validate(field, value):
         return str(value or "")[:1000]
     raise ValueError(f"field {field} is not editable")
 
+def _no_nul(o):
+    """Drop NUL characters (they turn up in odd emails; Postgres text/jsonb refuses them, so one bad
+    email would fail every retry)."""
+    if isinstance(o, str): return o.replace("\x00", "")
+    if isinstance(o, list): return [_no_nul(x) for x in o]
+    if isinstance(o, dict): return {_no_nul(k): _no_nul(v) for k, v in o.items()}
+    return o
+
+
 JOB_TOKEN = os.environ.get("EV_JOB_TOKEN", "")
 JOB_ROUTES = {"/api/alert-new", "/api/alert-meta", "/api/contract-signed"}   # Mac jobs only (watcher)
 MAC_ONLY = JOB_ROUTES | {"/api/open-folder"}                                 # never on Vercel
@@ -302,7 +311,7 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._local_guard(post=True): return
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            body = _no_nul(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"))
             if self.path == "/api/outbox-action":          # the outbox has its own rows; no dataset save
                 try:
                     st = db.outbox_action(body.get("id"), body.get("action"))
@@ -348,7 +357,9 @@ class H(BaseHTTPRequestHandler):
                     if not (self.LOCAL and self.client_address[0] == "127.0.0.1"): return self._send(403, "local only", "text/plain")
                     sub = {"contracts": "Contracts", "drafts": "Contract Drafts", "signed": "Signed Contracts", "questionnaires": "Questionnaires"}.get(body.get("folder"))
                     if not sub: return self._send(400, "bad folder", "text/plain")
-                    fp = os.path.join(EVDOCS, sub); os.makedirs(fp, exist_ok=True); subprocess.run(["open", fp])
+                    # the real Documents folder (in cloud mode EVDOCS is the renderer's temp folder; docs_sync copies here)
+                    fp = os.path.join(os.path.expanduser(os.environ.get("EV_DOCS_DIR", "~/Documents/Emanant Visuals")), sub)
+                    os.makedirs(fp, exist_ok=True); subprocess.run(["open", fp])
                     return self._send(200, "{}")
                 if self.path == "/api/contract/create":
                     lead = next((l for l in d["leads"] if l.get("id") == body.get("id")), None)
@@ -433,7 +444,8 @@ class H(BaseHTTPRequestHandler):
                         tgt.setdefault("email_ids", []).append(eid)
                         tgt["count"] = tgt.get("count", 1) + 1
                         tgt["detail"] = (f"[{(body.get('at') or '')[:16]}] " + str(body.get("detail", ""))[:300] + "\n" + tgt.get("detail", ""))[:1500]
-                        tgt["at"] = max(tgt.get("at") or "", body.get("at") or evtime.now_ct().isoformat(timespec="minutes"))
+                        tgt["at"] = max(tgt.get("at") or "", body.get("at") or evtime.now_ct().isoformat(timespec="minutes"),
+                                        key=lambda x: x.replace(" ", "T"))          # "YYYY-MM-DD HH:MM" vs "...THH:MM": compare as times
                         tgt["unread"] = True
                         if body.get("lead_id"): tgt["lead_id"] = body["lead_id"]
                         store(d, {"id": tgt["id"], "client": tgt["title"], "field": "alert", "old": None, "new": "merged"})

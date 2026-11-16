@@ -54,8 +54,14 @@ def main():
         if os.path.exists(dest):
             if sha_of(dest) in (m["sha256"], "unreadable"):
                 same += 1; continue
+            # a different version: never overwrite; find "(cloud copy)", "(cloud copy 2)", ... that either
+            # already holds THIS version or is free (review fix: a 3rd version used to be dropped)
             stem, ext = os.path.splitext(dest)
-            dest, copy = f"{stem} (cloud copy){ext}", True
+            for n in range(1, 100):
+                cand = f"{stem} (cloud copy{'' if n == 1 else f' {n}'}){ext}"
+                if not os.path.exists(cand) or sha_of(cand) in (m["sha256"], "unreadable"):
+                    break
+            dest, copy = cand, True
             if os.path.exists(dest):
                 same += 1; continue
         got = db.file_get(m["key"])

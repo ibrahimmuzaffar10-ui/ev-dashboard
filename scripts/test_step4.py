@@ -10,6 +10,7 @@ import base64, hashlib, json, os, re, socket, subprocess, sys, time, urllib.pars
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ.setdefault("EV_ALLOW_JSON", "1")   # tests run JSON servers on scratch copies only
 os.environ["EV_BACKEND"] = "supabase"
 import db, docstore, evenv  # noqa: E402
 

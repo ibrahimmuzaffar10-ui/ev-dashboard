@@ -11,6 +11,7 @@ import concurrent.futures as cf, datetime, hashlib, json, os, socket, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ.setdefault("EV_ALLOW_JSON", "1")   # tests run JSON servers on scratch copies only
 import evenv  # noqa: E402,F401  (loads .env.local: EV_JOB_TOKEN)
 import evtime  # noqa: E402
 import legacy  # noqa: E402

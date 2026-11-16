@@ -10,6 +10,7 @@ import datetime, fcntl, json, os, socket, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.environ.setdefault("EV_ALLOW_JSON", "1")   # tests run JSON servers on scratch copies only
 os.environ["EV_BACKEND"] = "supabase"
 import db  # noqa: E402
 

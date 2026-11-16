@@ -19,7 +19,7 @@ SUPPORT = os.path.join(HOME, "Library", "Application Support", "emanant-hq")
 PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
-def job(label, script, env, interval=None, keepalive=False, log=None, at=None, args=()):
+def job(label, script, env, interval=None, keepalive=False, log=None, at=None, args=(), weekday=None):
     d = {"Label": label, "ProgramArguments": [PY, os.path.join(REPO, script), *args], "WorkingDirectory": REPO,
          "EnvironmentVariables": dict({"PATH": PATH}, **env), "RunAtLoad": True,
          "StandardOutPath": os.path.join(LOGS, (log or label) + ".log"), "StandardErrorPath": os.path.join(LOGS, (log or label) + ".log")}
@@ -30,6 +30,8 @@ def job(label, script, env, interval=None, keepalive=False, log=None, at=None, a
     if at:      # (hour, minute); hour None = every hour at that minute
         d["StartCalendarInterval"] = {"Minute": at[1]} if at[0] is None else {"Hour": at[0], "Minute": at[1]}
         d["RunAtLoad"] = False
+        if weekday is not None:
+            d["StartCalendarInterval"]["Weekday"] = weekday     # 1 = Monday
     return d
 
 
@@ -57,6 +59,8 @@ def jobs(mode):
             # moved off Hermes cron (review finding: Hermes would keep running the old JSON copies)
             job("com.emanantvisuals.brief", "brief.py", base, at=(None, 2), log="brief"),       # hourly at :02; brief.py decides 7 AM / 10 PM
             job("com.emanantvisuals.calendar", "calendar_sync.py", base, interval=1800, log="calendar"),
+            # Monday weekly report by Claude Code (replaces the failing Hermes job); asleep at 9 -> runs on wake
+            job("com.emanantvisuals.weekly-report", "scripts/weekly_report.py", base, at=(9, 0), weekday=1, log="weekly-report"),
         ]
     sys.exit("mode must be shadow or prod")
 

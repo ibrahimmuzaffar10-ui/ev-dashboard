@@ -38,7 +38,7 @@ try:
     for f in os.listdir(LIVE):
         if f.endswith(".json"):
             shutil.copy2(os.path.join(LIVE, f), scratch)      # copy, never move
-    env = dict(os.environ, EV_BACKEND="json", EV_DATA_DIR=scratch, EV_DOCS_DIR=os.path.join(scratch, "docs"),
+    env = dict(os.environ, EV_BACKEND="json", EV_ALLOW_JSON="1", EV_DATA_DIR=scratch, EV_DOCS_DIR=os.path.join(scratch, "docs"),
                EV_PORT=str(PORT), EV_HOST="127.0.0.1")
     proc = subprocess.Popen([sys.executable, os.path.join(ROOT, "server.py")], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

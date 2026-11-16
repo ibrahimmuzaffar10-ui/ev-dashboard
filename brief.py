@@ -34,7 +34,7 @@ def name(l): return l["client"]
 # ---- what moved since the last brief
 moved = []
 for a in DATA.get("alerts", []):
-    if (a.get("at") or "") <= since[:16]: continue
+    if (a.get("at") or "").replace(" ", "T") <= since[:16].replace(" ", "T"): continue   # both time formats compare equally
     if a.get("type") == "reminder": continue
     who = name(L[a["lead_id"]]) if a.get("lead_id") in L else a.get("title", "")
     kind = {"new_inquiry": "🆕 New inquiry", "client_email": "✉️ Client email", "possible_inquiry": "❓ Possible inquiry",  # leak-check: allow: the app word "inquiry" (default lead name), not client data

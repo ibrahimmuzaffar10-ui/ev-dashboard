@@ -20,6 +20,14 @@ import evenv  # noqa: F401  (loads .env.local)
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.environ.get("EV_BACKEND", "json")
 CLOUD = BACKEND == "supabase"
+# After the cutover the JSON files in ~/EmanantHQ are frozen. A job or manual run that forgot
+# EV_BACKEND=supabase would read/write them silently, so JSON mode refuses to start while the
+# cutover marker exists (review finding M5). Tests on scratch copies set EV_ALLOW_JSON=1;
+# a real rollback deletes the marker (runbook step 9).
+CUTOVER_MARKER = os.path.expanduser("~/Library/Application Support/emanant-hq/cutover-done")
+if not CLOUD and os.path.exists(CUTOVER_MARKER) and os.environ.get("EV_ALLOW_JSON") != "1":
+    raise SystemExit("Emanant HQ now runs on Supabase: set EV_BACKEND=supabase (the old JSON files are frozen). "
+                     "Tests on a scratch copy: EV_ALLOW_JSON=1.")
 LOCK_KEY = 0x45564851                              # 'EVHQ'
 _tls = threading.local()
 
