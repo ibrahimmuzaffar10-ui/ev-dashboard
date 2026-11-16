@@ -179,7 +179,7 @@ ENUMS = {
     "fault": {"ours", "client", "timing", "unknown"},
 }
 TEXT = {"action_note", "notes", "venue", "quote", "client"}
-DATES = {"event", "inquiry", "last_contact"}
+DATES = {"event", "inquiry", "last_contact"}  # leak-check: allow: the app word "inquiry" (default lead name), not client data
 NUMS = {"total", "paid"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -220,13 +220,44 @@ def validate(field, value):
         return str(value or "")[:1000]
     raise ValueError(f"field {field} is not editable")
 
+JOB_TOKEN = os.environ.get("EV_JOB_TOKEN", "")
+JOB_ROUTES = {"/api/alert-new", "/api/alert-meta", "/api/contract-signed"}   # Mac jobs only (watcher)
+MAC_ONLY = JOB_ROUTES | {"/api/open-folder"}                                 # never on Vercel
+
+
 class H(BaseHTTPRequestHandler):
+    LOCAL = True        # the Mac's own server; the Vercel handler (api/index.py) sets False and has its own login
+
+    def _local_guard(self, post):
+        """Stop other websites from using the Mac server through the browser (CSRF, DNS rebinding):
+        the Host must be this server, a cross-site Origin is refused, and saves must be JSON
+        (a cross-site JSON POST needs a CORS preflight, which this server never grants)."""
+        if not self.LOCAL:
+            return True
+        ok_hosts = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+        origin = (self.headers.get("Origin") or "").lower()
+        bad = ((self.headers.get("Host") or "").lower() not in ok_hosts
+               or (origin and origin not in {"http://" + h for h in ok_hosts})
+               or (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site")
+        if bad:
+            self._send(403, "forbidden", "text/plain"); return False
+        if post and not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
+            self._send(415, "JSON only", "text/plain"); return False
+        return True
+
+    def _job_ok(self):
+        """Watcher-only routes: the Mac server, called from this Mac, with the per-install secret."""
+        import hmac
+        return (self.LOCAL and self.client_address[0] == "127.0.0.1" and bool(JOB_TOKEN)
+                and hmac.compare_digest(self.headers.get("X-EV-Job", ""), JOB_TOKEN))
+
     def _send(self, code, body, ctype="application/json"):
         b = body.encode() if isinstance(body, str) else body
         self.send_response(code); self.send_header("Content-Type", ctype + "; charset=utf-8")
         self.send_header("Content-Length", str(len(b))); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(b)
 
     def do_GET(self):
+        if not self._local_guard(post=False): return
         self.path = self.path.split("?")[0]
         if self.path in ("/", "/index.html"):
             html = open(TEMPLATE).read().replace("__BOOT__", "null").replace("__PRIVACY_OPTIONS__", privacy_options_html())
@@ -267,6 +298,7 @@ class H(BaseHTTPRequestHandler):
         self._send(404, '{"error":"not found"}')
 
     def do_POST(self):
+        if not self._local_guard(post=True): return
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             with db.locked(LOCK):
@@ -305,7 +337,7 @@ class H(BaseHTTPRequestHandler):
                     else: json.dump(ack, open(os.path.join(DATA_DIR, "brief_ack.json"), "w"))
                     return self._send(200, "{}")
                 if self.path == "/api/open-folder":
-                    if self.client_address[0] != "127.0.0.1": return self._send(403, "local only", "text/plain")
+                    if not (self.LOCAL and self.client_address[0] == "127.0.0.1"): return self._send(403, "local only", "text/plain")
                     sub = {"contracts": "Contracts", "drafts": "Contract Drafts", "signed": "Signed Contracts", "questionnaires": "Questionnaires"}.get(body.get("folder"))
                     if not sub: return self._send(400, "bad folder", "text/plain")
                     fp = os.path.join(EVDOCS, sub); os.makedirs(fp, exist_ok=True); subprocess.run(["open", fp])
@@ -334,7 +366,7 @@ class H(BaseHTTPRequestHandler):
                         mailed = str(ex)
                     return self._send(200, json.dumps({"lead": lead, "files": files, "mailed": mailed}, ensure_ascii=False))
                 if self.path == "/api/contract-signed":
-                    if self.client_address[0] != "127.0.0.1": return self._send(403, "local only", "text/plain")
+                    if not self._job_ok(): return self._send(403, "local only", "text/plain")
                     lead = next((l for l in d["leads"] if l.get("id") == body.get("lead_id")), None)
                     if not lead: return self._send(404, "lead not found", "text/plain")
                     import base64
@@ -355,7 +387,7 @@ class H(BaseHTTPRequestHandler):
                     store(d, {"id": al["id"], "client": al.get("title", ""), "field": "email_sent", "old": None, "new": subj})
                     return self._send(200, json.dumps({"alert": al}, ensure_ascii=False))
                 if self.path == "/api/alert-meta":
-                    if self.client_address[0] != "127.0.0.1": return self._send(403, "local only", "text/plain")
+                    if not self._job_ok(): return self._send(403, "local only", "text/plain")
                     changed = False
                     for a in d.get("alerts", []):
                         if a.get("email_id") in body:
@@ -364,7 +396,7 @@ class H(BaseHTTPRequestHandler):
                     if changed: store(d, {"id": "alerts", "client": "", "field": "unread", "old": None, "new": "sync"})
                     return self._send(200, '{"ok":true}')
                 if self.path == "/api/alert-new":
-                    if self.client_address[0] != "127.0.0.1": return self._send(403, "local only", "text/plain")
+                    if not self._job_ok(): return self._send(403, "local only", "text/plain")
                     A = d.setdefault("alerts", [])
                     eid = body.get("email_id")
                     if eid and any(a.get("email_id") == eid or eid in (a.get("email_ids") or []) for a in A):
@@ -378,7 +410,7 @@ class H(BaseHTTPRequestHandler):
                         act = [l for l in lead_by_email(fe) if l.get("status") in ("unanswered", "open", "booked")]
                         if act:
                             body["lead_id"] = act[0]["id"]; body.pop("create_lead")
-                            body["type"] = "client_email"; body["title"] = f"Repeat inquiry from {act[0]['client']}"
+                            body["type"] = "client_email"; body["title"] = f"Repeat inquiry from {act[0]['client']}"  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                     if not body.get("lead_id") and fe:
                         ls = lead_by_email(fe)
                         if len(ls) == 1: body["lead_id"] = ls[0]["id"]
@@ -406,8 +438,8 @@ class H(BaseHTTPRequestHandler):
                     if body.get("create_lead"):
                         L = body["create_lead"]
                         m = max([int(l["id"][1:]) for l in d["leads"] if str(l.get("id", "")).startswith("L")] + [0]) + 1
-                        lead = dict(id=f"L{m:03d}", client=str(L.get("client") or "New inquiry")[:120], channel=L.get("channel", "Website form"), service=L.get("service", "unknown"),
-                                    inquiry=today(), event=L.get("event") if DATE_RE.match(str(L.get("event") or "")) else "", event_text=str(L.get("event_text", ""))[:120],
+                        lead = dict(id=f"L{m:03d}", client=str(L.get("client") or "New inquiry")[:120], channel=L.get("channel", "Website form"), service=L.get("service", "unknown"),  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+                                    inquiry=today(), event=L.get("event") if DATE_RE.match(str(L.get("event") or "")) else "", event_text=str(L.get("event_text", ""))[:120],  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                                     venue="", replied="no", status="unanswered", quote="", total=None, paid=None, contract="n/a", retainer="n/a", balance="n/a",
                                     gallery="n/a", review="none", lost_reason="", fault="unknown", price_obj=False, source=L.get("source", ""),
                                     notes=str(L.get("notes", ""))[:1000], src_email=L.get("src_email", ""), ig_ref="", action_note="")
@@ -479,7 +511,7 @@ class H(BaseHTTPRequestHandler):
                     if not client: return self._send(400, "client name required", "text/plain")
                     n = max([int(l["id"][1:]) for l in d["leads"] if str(l.get("id", "")).startswith("L")] + [0]) + 1
                     lead = dict(id=f"L{n:03d}", client=client, channel=body.get("channel", ""), service=body.get("service", "unknown"),
-                                inquiry=validate("inquiry", body.get("inquiry") or today()), event=validate("event", body.get("event")),
+                                inquiry=validate("inquiry", body.get("inquiry") or today()), event=validate("event", body.get("event")),  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                                 event_text=body.get("event") or "", venue="", replied=validate("replied", body.get("replied", "no")),
                                 status=validate("status", body.get("status", "unanswered")), quote="", total=None, paid=None,
                                 contract="n/a", retainer="n/a", balance="n/a", gallery="n/a", review="none", lost_reason="", price_obj=False,

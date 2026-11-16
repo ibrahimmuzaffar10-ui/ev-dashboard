@@ -90,7 +90,7 @@ def apply_shape(rebuilt, shape):
 CLIENT = {"client": ("name", "text"), "src_email": ("email", "text"), "alt_email": ("alt_email", "text"),
           "ig_ref": ("instagram", "text")}
 LEAD = {"id": ("lead_id", "text"), "channel": ("channel", "text"), "service": ("service", "text"),
-        "source": ("source", "text"), "inquiry": ("inquiry_on", "date"), "last_contact": ("last_contact_on", "date"),
+        "source": ("source", "text"), "inquiry": ("inquiry_on", "date"), "last_contact": ("last_contact_on", "date"),  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         "event_text": ("event_text", "text"), "venue": ("venue", "text"), "status": ("status", "text"),
         "replied": ("replied", "text"), "contract": ("contract_status", "text"), "retainer": ("retainer_status", "text"),
         "balance": ("balance_status", "text"), "gallery": ("gallery", "text"), "review": ("review", "text"),

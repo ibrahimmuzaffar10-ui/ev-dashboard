@@ -86,6 +86,8 @@ def selftest_text_sha(docx_path):
 
 
 class handler(server.H):
+    LOCAL = False       # behind Vercel: the Host is the public domain; login is the gate, not the Host
+
     def parse_request(self):
         ok = super().parse_request()
         if ok:
@@ -216,6 +218,8 @@ class handler(server.H):
             return self._redirect("/")
         if not self._gate():
             return
+        if p in server.MAC_ONLY:            # watcher/Finder routes exist only on the Mac's own server
+            return self._send(403, "Not available online.", "text/plain")
         if not WRITES:
             return self._send(403, "Read-only: edits still happen in the Mac dashboard until cutover.", "text/plain")
         return super().do_POST()

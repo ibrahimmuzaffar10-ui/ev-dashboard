@@ -4,7 +4,7 @@ Runs every 5 minutes (launchd com.emanantvisuals.watch). Read-only on the mailbo
 - Website form (Formspree)  -> new lead (Unanswered) + alert
 - Chase Zelle "You received money" -> payment import + alert
 - Email from a known client      -> alert ("client replied")
-- Email that looks like an inquiry from someone new -> alert ("possible inquiry")
+- Email that looks like an inquiry from someone new -> alert ("possible inquiry")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
 Alerts stay on the dashboard until someone marks them handled.
 """
 import json, os, re, subprocess, sys, email, html, datetime, fcntl, urllib.request
@@ -53,7 +53,8 @@ def history(addr):
 def post(path, body):
     if os.environ.get("EV_TEST_FAIL_POSTS") == "1":             # scripts/test_step2.py: simulate the server being down
         raise RuntimeError("test: server unavailable")
-    req = urllib.request.Request(API + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(API + path, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "X-EV-Job": os.environ.get("EV_JOB_TOKEN", "")})
     return json.load(urllib.request.urlopen(req, timeout=20))
 
 def notify(title, msg):
@@ -185,14 +186,14 @@ def main():
                 post("/api/alert-new", {"type": "contract_signed", "title": "DocuSeal: signed contract (match needed)", "detail": subj + " — couldn't tell which client; set their Contract to Signed in the dashboard.", "email_id": key, "at": when})
                 notify("Signed contract received", subj)
         elif "formspree" in frm and not subj.lower().startswith("new submission"):
-            return "skipped"  # Formspree account mail (verification etc.), not an inquiry
+            return "skipped"  # Formspree account mail (verification etc.), not an inquiry  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         elif "formspree" in frm:
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default); t = text_of(m)
             rt = getaddresses([m.get("Reply-To", "")]); cem = (rt[0][1] if rt else field(t, "email")).lower()
             cname = field(t, "name") or cem; svc = field(t, "service"); msg = field(t, "message")
-            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:600], "email_id": key, "from_email": cem, "at": when,
+            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:600], "email_id": key, "from_email": cem, "at": when,  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                     "create_lead": {"client": cname, "channel": "Website form", "src_email": cem, "notes": f"{svc}: {msg}"[:900], "event_text": ""}}
-            post("/api/alert-new", body); notify("New website inquiry", f"{cname}: {svc}")
+            post("/api/alert-new", body); notify("New website inquiry", f"{cname}: {svc}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         elif "chase.com" in frm and "received money" in subj.lower():
             if not SHADOW:
                 z = subprocess.run([sys.executable, os.path.join(HERE, "zelle_import.py")], capture_output=True, timeout=600)
@@ -207,7 +208,7 @@ def main():
             fresh = re.split(r"\sOn .{5,80} wrote:", t)[0][:2000]
             if STRICT.search(subj + " " + fresh) or INQ.search(fresh):
                 post("/api/alert-new", {"type": "possible_inquiry", "title": f"Replied with details: {name}", "detail": fresh[:500], "email_id": key, "from_email": frm, "at": when})
-                notify("Inquiry details received", f"{name}: {fresh[:80]}")
+                notify("Inquiry details received", f"{name}: {fresh[:80]}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             else:
                 post("/api/alert-new", {"type": "email", "title": f"Reply not about photography: {name}", "detail": "Auto-ignored. Reopen if this is wrong. " + fresh[:400], "email_id": key, "from_email": frm, "at": when, "done": True})
         elif frm in known:
@@ -229,8 +230,8 @@ def main():
                 post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:400]).strip(" —"), "email_id": key, "from_email": frm, "at": when})
                 notify("Unclear message", f"{name}: {subj or t[:60]}")
                 return "alert"
-            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": subj, "email_id": key, "from_email": frm, "at": when})
-            notify("Possible inquiry", f"{name}: {subj}")
+            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": subj, "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            notify("Possible inquiry", f"{name}: {subj}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         else:
             return "skipped"   # newsletter / noise / blocked sender
         return "alert"
@@ -284,7 +285,7 @@ def main():
             try:
                 for t in e.get("to", []) or []:
                     for l in byaddr.get((t.get("email") or "").lower(), []):
-                        if l.get("status") in ("completed", "lost") and (l.get("inquiry") or "") < "2026-10-01": continue
+                        if l.get("status") in ("completed", "lost") and (l.get("inquiry") or "") < "2026-10-01": continue  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                         if l.get("status") == "unanswered": post("/api/update", {"id": l["id"], "field": "status", "value": "open"}); l["status"] = "open"
                         if (l.get("last_contact") or "") < day: post("/api/update", {"id": l["id"], "field": "last_contact", "value": day}); l["last_contact"] = day
                 S.mark(k, "processed", "sent")

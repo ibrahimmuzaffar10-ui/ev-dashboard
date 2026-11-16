@@ -105,7 +105,7 @@ try:
              ("/api/update", {"id": LEAD, "field": "total", "value": "1500"}),
              ("/api/alert-new", {"email_id": "TEST-4a-e1", "from_email": fe, "type": "email", "title": "TEST 4a alert 1",
                                  "detail": "TEST", "at": "2026-11-10T09:00"}),
-             ("/api/alert-new", {"email_id": "TEST-4a-e2", "from_email": fe, "type": "inquiry", "title": "TEST 4a new lead",
+             ("/api/alert-new", {"email_id": "TEST-4a-e2", "from_email": fe, "type": "inquiry", "title": "TEST 4a new lead",  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                                  "detail": "TEST", "at": "2026-11-10T09:05",
                                  "create_lead": {"client": "TEST 4a fold", "src_email": fe, "channel": "Website form"}}),
              ("/api/alert-new", {"email_id": "TEST-4a-e3", "from_email": fe, "type": "email", "title": "TEST 4a merged",

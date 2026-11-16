@@ -37,7 +37,7 @@ for a in DATA.get("alerts", []):
     if (a.get("at") or "") <= since[:16]: continue
     if a.get("type") == "reminder": continue
     who = name(L[a["lead_id"]]) if a.get("lead_id") in L else a.get("title", "")
-    kind = {"new_inquiry": "🆕 New inquiry", "client_email": "✉️ Client email", "possible_inquiry": "❓ Possible inquiry",
+    kind = {"new_inquiry": "🆕 New inquiry", "client_email": "✉️ Client email", "possible_inquiry": "❓ Possible inquiry",  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             "payment": "💵 Payment", "contract_signed": "✍️ Contract signed", "unclear": "❓ Unclear message"}.get(a.get("type"), "🔔 " + a.get("type", "alert"))
     cnt = f" ({a['count']} messages)" if a.get("count", 1) > 1 else ""
     moved.append(f"- {kind}: **{who}**{cnt} — {(a.get('detail') or '').splitlines()[0][:110]}")

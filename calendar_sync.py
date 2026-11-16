@@ -93,7 +93,7 @@ today = now.isoformat()
 for ev in cal:
     l = L.get(ev["lead_id"]); d = ev["date"]
     if not l or d < today or l["status"] not in ("booked", "open", "unanswered") or l["client"].startswith("TEST"): continue
-    if l["status"] == "unanswered" and (l.get("inquiry") or "") < (now - datetime.timedelta(days=30)).isoformat(): continue  # stale, never-answered: no hold
+    if l["status"] == "unanswered" and (l.get("inquiry") or "") < (now - datetime.timedelta(days=30)).isoformat(): continue  # stale, never-answered: no hold  # leak-check: allow: the app word "inquiry" (default lead name), not client data
     svc = (l.get("service") or "").replace("_", " ").replace("engagement couples", "couples").replace("unknown", "").replace("event other", "event")
     what = ev.get("label") or svc or "shoot"
     booked = l["status"] == "booked"
@@ -101,7 +101,7 @@ for ev in cal:
     same_day = sum(1 for x in cal if x["lead_id"] == l["id"]) == 1
     tm = times(ev.get("time") or "") or (times((l.get("event_text") or "") + " " + (l.get("notes") or "")) if same_day and not ev.get("label") else None)
     y, mo, dd = map(int, d.split("-"))
-    notes = f"{'BOOKED' if booked else 'PENDING inquiry'} · contract: {l.get('contract')} · retainer: {l.get('retainer')}\n{l.get('venue') or ''}\nEmanant HQ lead {l['id']}"
+    notes = f"{'BOOKED' if booked else 'PENDING inquiry'} · contract: {l.get('contract')} · retainer: {l.get('retainer')}\n{l.get('venue') or ''}\nEmanant HQ lead {l['id']}"  # leak-check: allow: the app word "inquiry" (default lead name), not client data
     if tm:
         (h1, m1), (h2, m2) = tm
         st = datetime.datetime(y, mo, dd, h1, m1); en = datetime.datetime(y, mo, dd, h2, m2)

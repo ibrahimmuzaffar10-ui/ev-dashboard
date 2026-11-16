@@ -197,7 +197,7 @@ table.mini{width:100%;border-collapse:collapse;margin-top:4px}table.mini th{posi
   <label>Client name</label><input name="client" required>
   <div class="row"><div><label>Channel</label><select name="channel"><option>Instagram</option><option>Email</option><option>Website form</option><option>Referral</option><option>Text / Phone</option><option>Planner / Vendor</option></select></div>
   <div><label>Service</label><select name="service"></select></div></div>
-  <div class="row"><div><label>Inquiry date</label><input type="date" name="inquiry"></div><div><label>Event date</label><input type="date" name="event"></div></div>
+  <div class="row"><div><label>Inquiry date</label><input type="date" name="inquiry"></div><div><label>Event date</label><input type="date" name="event"></div></div>  <!-- leak-check: allow: the app word "inquiry" (default lead name), not client data -->
   <div class="row"><div><label>Status</label><select name="status"></select></div><div><label>Replied</label><select name="replied"><option value="no">No</option><option value="yes">Yes</option></select></div></div>
   <label>Notes</label><textarea name="notes" rows="2"></textarea>
   <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Add lead</button></div>
@@ -236,14 +236,14 @@ function overdue(r){return instLate(r)||(r.balance==='due'&&!r.schedule&&r.event
 const daysTo=d=>Math.round((new Date(d+'T12:00')-new Date(TODAY+'T12:00'))/864e5);
 function autoAction(r){
   const a=[];
-  if(r.status==='unanswered') a.push('Reply to inquiry');
+  if(r.status==='unanswered') a.push('Reply to inquiry');  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   if(r.status==='open') a.push('Follow up');
   if(r.status==='booked'){ if(r.contract!=='signed'&&r.contract!=='n/a')a.push('Get contract signed'); if(r.retainer!=='paid'&&r.retainer!=='n/a')a.push('Collect retainer'); const n=nextInst(r); if(n&&n.due&&daysTo(n.due)<=14)a.push((daysTo(n.due)<0?'OVERDUE: collect ':'Collect ')+money(n.amount)+' by '+fmt(n.due)); else if(overdue(r))a.push('Collect balance'); }
   if(r.status==='completed'){ if(r.gallery!=='yes'&&r.gallery!=='n/a')a.push('Deliver / confirm gallery'); if(r.balance==='due'||r.balance==='unknown')a.push('Confirm balance paid'); if(r.gallery==='yes'&&r.review==='none')a.push('Ask for Google review'); }
   return a.join(' · ');
 }
 const nextStep=r=>r.action_note||autoAction(r);
-const fresh=r=>(!r.event||r.event>=TODAY)&&(!r.inquiry||(new Date(TODAY)-new Date(r.inquiry))/864e5<=60);
+const fresh=r=>(!r.event||r.event>=TODAY)&&(!r.inquiry||(new Date(TODAY)-new Date(r.inquiry))/864e5<=60);  // leak-check: allow: the app word "inquiry" (default lead name), not client data
 const needs=r=>!!r.action_note||(r.status==='unanswered'?fresh(r):(['open','booked','completed'].includes(r.status)&&!!autoAction(r)));
 
 const isWon=r=>['booked','completed'].includes(r.status);
@@ -283,14 +283,14 @@ const TABS={
   action:{label:'Action needed',rows:L=>L.filter(needs),cols:['status','client','event','next','replied','contract','retainer','nextpay'],sort:'pri'},
   upcoming:{label:'Upcoming',rows:L=>L.filter(r=>r.event&&r.event>=TODAY&&['booked','open'].includes(r.status)),cols:['event','client','status','service','contract','retainer','nextpay','next'],sort:'event'},
   bookings:{label:'Bookings',rows:L=>L.filter(r=>['booked','completed'].includes(r.status)),cols:['event','client','status','contract','retainer','balance','nextpay','total','paid','gallery','review','next'],sort:'eventdesc'},
-  all:{label:'All leads',rows:L=>L,cols:['inquiry','client','status','replied','event','service','contract','retainer','balance','gallery','lost_reason','next','notes'],sort:'inquiry'},
-  lost:{label:'Lost',rows:L=>L.filter(r=>['lost','ghosted'].includes(r.status)),cols:['inquiry','client','status','event','service','lost_reason','fault','notes'],sort:'inquiry',fault:true},
+  all:{label:'All leads',rows:L=>L,cols:['inquiry','client','status','replied','event','service','contract','retainer','balance','gallery','lost_reason','next','notes'],sort:'inquiry'},  // leak-check: allow: the app word "inquiry" (default lead name), not client data
+  lost:{label:'Lost',rows:L=>L.filter(r=>['lost','ghosted'].includes(r.status)),cols:['inquiry','client','status','event','service','lost_reason','fault','notes'],sort:'inquiry',fault:true},  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   vendors:{label:'Vendors'},
   fin:{label:'Booking financials',view:'fin',rows:L=>L.filter(isWon),cols:['event','client','status','total','paid','balamt','nextpay','plan','retainer','balance'],sort:'eventdesc'},
   dues:{label:'Upcoming payments',view:'fin',dues:true},
   payments:{label:'Payments received',view:'fin',pay:true}
 };
-const HEAD={status:'Status',client:'Client',event:'Event date',next:'Next step',replied:'Replied',contract:'Contract',retainer:'Retainer',balance:'Balance',gallery:'Gallery',review:'Review',service:'Service',inquiry:'Inquiry',quote:'Quoted',notes:'Notes',total:'Total',paid:'Paid',nextpay:'Next payment',lost_reason:'Lost reason',fault:'Whose side',balamt:'Balance left',plan:'Payment plan'};
+const HEAD={status:'Status',client:'Client',event:'Event date',next:'Next step',replied:'Replied',contract:'Contract',retainer:'Retainer',balance:'Balance',gallery:'Gallery',review:'Review',service:'Service',inquiry:'Inquiry',quote:'Quoted',notes:'Notes',total:'Total',paid:'Paid',nextpay:'Next payment',lost_reason:'Lost reason',fault:'Whose side',balamt:'Balance left',plan:'Payment plan'};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
 const PRI={unanswered:0,open:1,booked:2,lost:3,completed:4};
 
 function cell(k,r){
@@ -313,7 +313,7 @@ function cell(k,r){
     case 'balamt': { const b=balAmt(r); if(b==null) return '<span class="muted">—</span>'; return `<span class="pill ${b===0?'g':overdue(r)?'r':'y'}">${money(b)}</span>`; }
     case 'plan': { const S=r.schedule||[]; const items=S.map((x,i)=>`<div class="inst ${x.paid?'done':(x.due&&x.due<TODAY?'late':'')}" data-id="${r.id}" data-i="${i}" title="Click to edit">${money(x.amount)}${x.due?' · '+fmt(x.due):''} <span class="muted">${esc(x.label)}</span></div>`).join('');
       return `<div class="plan">${items||'<span class="muted">No plan</span>'}${LIVE?`<button class="linkbtn addinst" data-id="${r.id}">+ add payment</button>`:''}</div>`; }
-    case 'inquiry': return fmt(r.inquiry);
+    case 'inquiry': return fmt(r.inquiry);  // leak-check: allow: the app word "inquiry" (default lead name), not client data
     case 'service': return svc(r.service);
     case 'total': case 'paid': return LIVE?`<input class="inline money" inputmode="decimal" value="${r[k]??''}" placeholder="—" data-id="${r.id}" data-f="${k}">`:money(r[k]);
     case 'next': { const t=nextStep(r); return LIVE?`<span class="note ${r.action_note?'':'auto'}" contenteditable="true" data-id="${r.id}" data-f="action_note" data-auto="${esc(autoAction(r))}">${esc(t)}</span>`:esc(t); }
@@ -335,7 +335,7 @@ function render(){
   if(T.alerts){
     const showDone=document.getElementById('fs').value==='done';
     const A=(DATA.alerts||[]).filter(a=>(showDone||!a.done)&&(!q||JSON.stringify(a).toLowerCase().includes(q))).sort((a,b)=>(a.done-b.done)||String(b.at).localeCompare(String(a.at)));
-    const TY={contract_signed:['Contract signed','g'],reminder:['Sign-by reminder','o'],unclear:['Unclear message','o'],new_inquiry:['New inquiry','o'],possible_inquiry:['Possible inquiry','y'],client_email:['Client email','y'],payment:['Payment','g'],email:['Email','n']};
+    const TY={contract_signed:['Contract signed','g'],reminder:['Sign-by reminder','o'],unclear:['Unclear message','o'],new_inquiry:['New inquiry','o'],possible_inquiry:['Possible inquiry','y'],client_email:['Client email','y'],payment:['Payment','g'],email:['Email','n']};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
     tbl.innerHTML='<thead><tr><th>When</th><th>Type</th><th>What</th><th>Details</th><th></th></tr></thead><tbody>'+
      (A.length?A.map(a=>{const [tl,tc]=TY[a.type]||['Alert','n'];const lead=a.lead_id&&DATA.leads.find(l=>l.id===a.lead_id);
        return `<tr class="${a.done?'done':''}"><td>${esc(String(a.at).replace('T',' '))}</td><td><span class="pill ${tc} atype">${tl}</span></td><td class="client">${esc(a.title)}${a.count>1?` <span class="pill y" style="font-size:10.5px;padding:1px 7px">${a.count} messages</span>`:''} ${a.unread&&!a.done?'<span class="pill o" style="font-size:10.5px;padding:1px 7px">Unread</span>':''}<small>${esc(a.from_email||'')}${a.clarify_sent?' · asked for details '+fmt(a.clarify_sent)+', waiting for reply':''}</small></td><td class="wrap" style="white-space:pre-line">${esc(a.detail)}</td>
@@ -367,7 +367,7 @@ function render(){
   else if(T.sort==='pri') R.sort((a,b)=>(PRI[a.status]-PRI[b.status])||by('event')(a,b));
   else if(T.sort==='event') R.sort(by('event'));
   else if(T.sort==='eventdesc') R.sort((a,b)=>String(b.event||'').localeCompare(String(a.event||'')));
-  else R.sort((a,b)=>String(b.inquiry||'').localeCompare(String(a.inquiry||'')));
+  else R.sort((a,b)=>String(b.inquiry||'').localeCompare(String(a.inquiry||'')));  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   const cls=k=>k==='client'?'client':(k==='next'||k==='notes'||k==='quote'||k==='plan')?'wrap':(k==='total'||k==='paid')?'num':'';
   const fb=document.getElementById('fb'); if(fb) fb.remove();
   if(T.fault) tbl.closest('.card').querySelector('.toolbar').insertAdjacentHTML('afterend',faultBar(R).replace('class="faultbar"','class="faultbar" id="fb"'));
@@ -416,7 +416,7 @@ document.getElementById('t').addEventListener('click',async e=>{const b=e.target
      MF.elements.body.value=`Hi ${first&&!/^[a-z0-9._%+-]+$/.test(first)?first:'there'},\n\nThank you so much for reaching out! I'd love to help. Could you share a little more about what you're looking for, such as the type of event or session (wedding, nikkah, engagement, family, etc.), the date and location, and roughly how many hours of coverage you have in mind?\n\nOnce I know a bit more, I'll send over my availability and the right details for you.\n\nWarmly,\nEman\nEmanant Visuals · emanantvisuals.com · @emanantvisuals`;mailDlg.showModal()}
    else if(b.dataset.x==='ignore'){await alertAct(a.id,'ignore');toast('Ignored · future emails from '+(a.from_email||'this sender').split('@').pop()+' won\'t alert')}
    else if(b.dataset.x==='open'){const l=DATA.leads.find(x=>x.id===a.lead_id);tab='all';document.getElementById('q').value=l?l.client:'';render()}
-   else if(b.dataset.x==='lead'){alertForLead=a;F.reset();F.elements.client.value=a.title.replace(/^Possible inquiry: /,'');F.elements.inquiry.value=TODAY;F.elements.notes.value=a.detail+(a.from_email?' ('+a.from_email+')':'');F.elements.channel.value='Email';dlg.showModal()} }
+   else if(b.dataset.x==='lead'){alertForLead=a;F.reset();F.elements.client.value=a.title.replace(/^Possible inquiry: /,'');F.elements.inquiry.value=TODAY;F.elements.notes.value=a.detail+(a.from_email?' ('+a.from_email+')':'');F.elements.channel.value='Email';dlg.showModal()} }  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   catch(err){toast('Not saved: '+err.message,true)}});
 const mailDlg=document.getElementById('mailDlg'), MF=document.getElementById('mailForm'); let mailFor=null;
 mailDlg.addEventListener('close',async()=>{if(mailDlg.returnValue!=='ok'||!mailFor)return;
@@ -483,7 +483,7 @@ document.getElementById('t').addEventListener('click',async e=>{const b=e.target
 const dlg=document.getElementById('dlg'), F=document.getElementById('addForm');
 F.elements.service.innerHTML=SERVICES.map(s=>`<option value="${s}">${svc(s)}</option>`).join('');
 F.elements.status.innerHTML=OPT.status.map(o=>`<option value="${o[0]}"${o[0]==='unanswered'?' selected':''}>${o[1]}</option>`).join('');
-document.getElementById('addBtn').onclick=()=>{alertForLead=null;F.reset();F.elements.inquiry.value=TODAY;dlg.showModal()};
+document.getElementById('addBtn').onclick=()=>{alertForLead=null;F.reset();F.elements.inquiry.value=TODAY;dlg.showModal()};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
 dlg.addEventListener('close',async()=>{if(dlg.returnValue!=='ok')return;const body=Object.fromEntries(new FormData(F));
   try{const res=await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
     const nl=(await res.json()).lead;DATA.leads.push(nl);toast('Lead added ✓');if(alertForLead){await alertAct(alertForLead.id,'done',nl.id);alertForLead=null}render()}catch(e){toast('Not added: '+e.message,true)}});
