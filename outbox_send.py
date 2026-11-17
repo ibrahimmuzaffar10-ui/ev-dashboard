@@ -177,12 +177,14 @@ def ping_if_watcher_healthy():
     import evtime
     url = os.environ.get("EV_HEALTHCHECK_URL")
     hw = db.read_doc("heartbeat_watch") or {}
+    # the last SUCCESSFUL email check (one failed run must not trigger a false "Mac down" email)
+    last_ok = hw.get("last_ok_at") or (hw.get("at") if hw.get("ok") else None)
     try:
-        age = (evtime.now_ct() - datetime.datetime.fromisoformat(hw["at"])).total_seconds()
+        age = (evtime.now_ct() - datetime.datetime.fromisoformat(last_ok)).total_seconds()
     except Exception:
         return
     testing = os.environ.get("EV_TEST_DB") == "1" or os.environ.get("EV_OUTBOX_DRY")
-    if url and not testing and hw.get("ok") and not hw.get("shadow") and age <= 2.5 * 3600:
+    if url and not testing and not hw.get("shadow") and age <= 2.5 * 3600:
         try: urllib.request.urlopen(url, timeout=10).read()
         except Exception as ex: print("healthcheck ping failed:", ex)
 

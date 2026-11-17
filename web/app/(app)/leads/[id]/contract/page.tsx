@@ -7,6 +7,9 @@ import { SERVICE } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
 import { ContractForm } from "./form";
 
+// contract rendering runs through the renderer service: allow up to 60 s (normally 2-5 s)
+export const maxDuration = 60;
+
 const WED = ["wedding", "multi_day_wedding", "nikkah", "walima", "mehndi", "baraat", "reception"];
 
 async function Load({ params }: { params: Promise<{ id: string }> }) {

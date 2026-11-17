@@ -33,6 +33,9 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `scripts/testdb.py` | **Post-cutover tests run ONLY through this**: private local Postgres copy (TLS, same role) from the newest backup: `testdb.py run <cmd>` |
 | `scripts/restore_local.py`, `scripts/lead_admin.py` | Backup → old JSON without Supabase; safe one-lead show/delete |
 | `web/` | Stage 3 Next.js 16 phone-first app (own Vercel project `emanant-hq-web`; read `web/AGENTS.md` first) |
+| `web/lib/bridge.ts`, `web/lib/facts.ts`, `web/app/files/[id]` | Phone app saves through the Python API with the user's own token (one copy of the rules); extraction of event details from client messages; contract files from the `files` table |
+| `push.py`, `requirements-mac.txt`, `web/public/sw.js` | Web push (Phase 16): the Mac sends (VAPID private key only in `.env.local`), the phone shows; Mac-only Python extras |
+| `scripts/set_login_password.py`, `scripts/lead_admin.py` | Reset a login password (hidden prompt, Ibrahim runs it); safe one-lead delete |
 | `server.py` | Dashboard server (stdlib `ThreadingHTTPServer`; `load()`/`store()` on JSON; 6 GET + 13 POST routes) |
 | `dashboard_template.html`, `calendar.html` | UI (single page; `__BOOT__` and `__PRIVACY_OPTIONS__` placeholders filled by the server) |
 | `watch.py` | iCloud mail watcher (via `himalaya` CLI) → alerts; triggers `zelle_import.py` |

@@ -139,7 +139,9 @@ def heartbeat(ok):
     to the free healthchecks.io monitor in EV_HEALTHCHECK_URL, which emails Ibrahim + Eman if the Mac
     goes quiet. Never fails the run."""
     try:
-        db.doc_write("heartbeat_watch", {"at": evtime.now_ct().isoformat(timespec="seconds"), "ok": ok, "shadow": SHADOW})
+        now = evtime.now_ct().isoformat(timespec="seconds")
+        prev = (db.doc_read("heartbeat_watch") or {}).get("last_ok_at") if not ok else None
+        db.doc_write("heartbeat_watch", {"at": now, "ok": ok, "shadow": SHADOW, "last_ok_at": now if ok else prev})
     except Exception as ex:
         ok = False      # database unreachable: no "all good" ping, so healthchecks.io alerts if it lasts
         print("heartbeat not saved:", ex)

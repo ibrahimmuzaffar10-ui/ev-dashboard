@@ -1,5 +1,10 @@
 # Emanant HQ — what to do when something is off
 
+**Daily use: the phone app** https://emanant-hq-web.vercel.app (Home Screen app; also works in a Mac browser). It saves through
+the original dashboard's server (https://ev-dashboard-tan.vercel.app), which must stay online until Phase 18 decides its future.
+Notifications: Today → 🔔. They show the client's name and email subject; to hide them on the lock screen, iPhone Settings →
+Notifications → Show Previews → When Unlocked.
+
 Plain-language procedures (Stage 2, phases 10–11). The website is https://ev-dashboard-tan.vercel.app;
 the Mac copy is http://127.0.0.1:8787 (same data, from Supabase).
 
