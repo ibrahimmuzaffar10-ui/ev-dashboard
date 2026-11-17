@@ -40,6 +40,7 @@
 !scripts/test_local_guard.py
 !scripts/test_rollback_keys.py
 !scripts/normalize_alert_times.py
+!scripts/outbox_admin.py
 !scripts/weekly_report.py
 !deploy/weekly_report_prompt.md
 !scripts/profile_keys.py

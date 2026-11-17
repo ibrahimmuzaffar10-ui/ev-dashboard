@@ -82,24 +82,31 @@ Goal: every byte of data in Supabase, nothing lost, nothing changed on the Mac. 
 
 **Changes from the earlier plan (Claude 11/10):** (a) file paths inside lead records are **not** rewritten: rewriting would break "exactly as in the JSON"; the manifest maps old path → Storage key and Phase 4 uses it. (b) Storage mirrors the folders (`drafts/`, `signed/`, …) instead of `leads/<id>/`: only 3 leads reference files, so sorting by lead would mean guessing. (c) `contract_final_content.py` is not uploaded now: the bucket accepts only PDF/DOCX/JSON and only the cloud renderer (Phase 4/5) needs it. (d) `backups/` stays for Phase 7.
 
-### Cutover runbook (step 6) — revised 11/16 after the adversarial review; run only with Ibrahim's go
-Hermes job ids: brief `4b085dd26f09`, calendar `7e6dfe1efe4f`, weekly report `f312cc6d841d` (job hunt + clipping stay on Hermes).
-0. **Pre-flight (all must pass):** `test_local_guard` 18/18 · `test_step2` 16/16 · `test_step3` 18/18 · `test_step4` · `test_rollback_keys` 5/5 · leak check `--all` OK · Vercel deploy is the pushed commit · outbox has 0 queued/sending rows · `.env.local` has `EV_JOB_TOKEN`, `EV_HEALTHCHECK_URL`, `EV_HEALTHCHECK_BACKUP_URL`.
-1. **Freeze the old system** (survives a reboot): `launchctl bootout` + `launchctl disable` for `gui/$UID/com.emanantvisuals.watch` and `…dashboard` (plists kept). `hermes cron pause` the 3 Emanant jobs. No shadow jobs may be loaded (`deploy/launchd.py shadow status`).
-2. **Final copy:** copy `~/EmanantHQ/*.json` into a fresh snapshot folder (copy, never move) → `scripts/profile_keys.py` (0 blockers).
-3. **Houston time:** `scripts/normalize_alert_times.py <snapshot>` (refuses ~/EmanantHQ; before/after log kept next to the snapshot; never runs twice).
-4. **Load:** `scripts/migrate_v2.py` → `scripts/verify_v2.py` (15/15). Outbox: delete leftover test/shadow rows (expect 0 after). Files: `scripts/migrate_files.py` then `scripts/load_files.py` (all SHA-256 match); the `files` registry may only hold Documents files + templates (no shadow-docs paths).
-5. **Start the Mac jobs:** `launchctl enable` the two old labels, then `deploy/launchd.py prod install` (8 jobs: dashboard, watch 5 min, outbox 1 min, docs-sync 5 min, backup hourly-if-due, brief hourly :02, calendar 30 min, weekly report Mon 9 AM; originals kept in Application Support). `touch "~/Library/Application Support/emanant-hq/cutover-done"` (JSON mode now refuses to start).
-6. **Cloud saves on:** `EV_CLOUD_WRITES=1` on Vercel, redeploy. Selftest 200.
-7. **Smoke test** with a TEST lead on the Mac server and on Vercel (logged in): save, alert, contract draft (email queued → "Emails waiting" banner → sent by the Mac to Eman), Cancel/Send again on a TEST email, then delete the TEST rows. Calendar sync run once (macOS may ask once for Calendar access).
-8. **Monitoring + first backup:** first watcher ping un-pauses healthchecks "email watcher"; `scripts/backup.py` → `scripts/restore_drill.py` (17/17); backup check gets its first ping.
-9. **Rollback** (within 14 days), in THIS order so nothing is lost:
-   1. `EV_CLOUD_WRITES=0` on Vercel **and redeploy** (no more cloud edits).
-   2. Let the outbox drain (banner empty, or cancel what shouldn't go), then run `docs_sync.py` once (cloud contracts reach Documents).
-   3. `deploy/launchd.py prod remove`; delete the `cutover-done` marker.
-   4. `scripts/export_json.py ~/EmanantHQ-rollback` (Zelle keys → mailbox numbers, so the old importer can't double-count; needs the mailbox) → keep a copy of `~/EmanantHQ/*.json`, then copy the exported files in.
-   5. Restore the kept plists (`*.before-prod`), `launchctl enable` + bootstrap them; `hermes cron resume` the 3 jobs.
-   If Supabase itself is down: restore the newest nightly backup into a local Postgres (`restore_drill.py` method) and point `export_json.py` at it with `EV_DB_HOST`.
+### Cutover runbook (step 6) — revised 11/16 after two adversarial reviews; run only with Ibrahim's go
+Copy-paste checklist. `cd ~/repos/ev-dashboard; PY=.venv/bin/python`. Ⓘ = needs Ibrahim. Hermes job ids: brief `4b085dd26f09`, calendar `7e6dfe1efe4f`, weekly report `f312cc6d841d` (job hunt + clipping stay on Hermes). Every step's pass criterion must hold before the next.
+- **C0 Ⓘ** Ibrahim says go; tell Eman: no dashboard edits until the end. Mac plugged in and online.
+- **C1** `$PY scripts/shadow_compare.py report` → every one-sided key explained (deleted emails / manual live edits).
+- **C2** `python3 deploy/launchd.py shadow remove; python3 deploy/launchd.py shadow status` → 3× "not loaded"; `lsof -iTCP:8789 -sTCP:LISTEN` prints nothing (tests use :8789).
+- **C3 Pre-flight:** `T=$(mktemp -d); mkdir $T/snap; cp -p ~/EmanantHQ/*.json $T/snap/` → `$PY scripts/test_local_guard.py` 18/18 · `$PY scripts/test_step2.py $T` 16/16 · `$PY scripts/test_step3.py $T` 18/18 · `$PY scripts/test_step4.py $T` 14/14 · `$PY scripts/test_rollback_keys.py` 5/5 · `$PY scripts/check_leaks.py --all` OK · `grep -cE '^(EV_JOB_TOKEN|EV_HEALTHCHECK_URL|EV_HEALTHCHECK_BACKUP_URL)=' .env.local` = 3 · `vercel ls ev-dashboard` newest production = after the last push (else `vercel deploy --prod --yes`) → `rm -rf $T`.
+- **C4 Freeze the old system** (survives a reboot): `for L in watch dashboard; do launchctl bootout gui/$UID/com.emanantvisuals.$L; launchctl disable gui/$UID/com.emanantvisuals.$L; done; for J in 4b085dd26f09 7e6dfe1efe4f f312cc6d841d; do hermes cron pause $J; done` → `launchctl list | grep emanant` empty, the 3 Hermes jobs paused, and wait until `pgrep -f EmanantHQ/` prints nothing (no old job mid-run).
+- **C5 Snapshot:** `S=~/EmanantHQ-cutover-$(date +%Y%m%d-%H%M); mkdir "$S"; cp -p ~/EmanantHQ/*.json "$S"/; EV_DATA_DIR="$S" $PY scripts/profile_keys.py` → 0 blockers.
+- **C6 Houston time:** `$PY scripts/normalize_alert_times.py "$S"` → "N alert times converted"; log file in `$S`.
+- **C7 Outbox:** `$PY scripts/outbox_admin.py clear --yes` → "outbox: empty" (rows from tests/shadow must never be sent).
+- **C8 Files, THEN data** (migrate_v2 reads the file manifest): `F=$(mktemp -d); $PY scripts/migrate_files.py $F` (all identical) → `$PY scripts/load_files.py` (n/n, wording loaded) → `rm -rf $F` → `EV_DATA_DIR="$S" $PY scripts/migrate_v2.py` → `EV_DATA_DIR="$S" $PY scripts/verify_v2.py` 15/15 → no `shadow-docs` paths in the registry.
+- **C9 Backup + drill while nothing writes:** `$PY scripts/backup.py` → `D=$(mktemp -d); $PY scripts/restore_drill.py <that .dump> $D` → 0 fail (17/17); `rm -rf $D`.
+- **C10 Start the Mac jobs:** `launchctl enable gui/$UID/com.emanantvisuals.dashboard; launchctl enable gui/$UID/com.emanantvisuals.watch; python3 deploy/launchd.py prod install` → 8× installed; `touch "$HOME/Library/Application Support/emanant-hq/cutover-done"`; 2 `*.before-prod` plists in Application Support.
+- **C11 Ⓘ Cloud saves on:** `vercel env add EV_CLOUD_WRITES production` (value 1) → `vercel deploy --prod --yes` → selftest (`X-EV-Selftest` header) 200.
+- **C12 Ⓘ Smoke test at the Mac:** TEST lead on the Mac server and on Vercel (logged in): save, alert, contract draft (email queued → "Emails waiting" banner → sent by the Mac to Eman), Cancel / Send again on a TEST email, delete the TEST rows. Then `for L in calendar docs-sync weekly-report brief; do launchctl kickstart gui/$UID/com.emanantvisuals.$L; done`, answer any macOS permission prompt (it belongs to the launchd job, not Terminal), logs in `~/Library/Logs/emanant-hq/` show no errors.
+- **C13 Ⓘ Monitoring:** healthchecks.io "email watcher" turns green within 15 min (a ping resumes a paused check unless "manual resume" is on — check it's off); "daily backup" gets its first ping from C9.
+
+**Rollback** (within 14 days), in THIS order so nothing is lost:
+- **R1 Ⓘ** `vercel env rm EV_CLOUD_WRITES production` → `vercel env add EV_CLOUD_WRITES production` (0) → `vercel deploy --prod --yes`; a Vercel save now gets 403.
+- **R2** Wait until `$PY scripts/outbox_admin.py status` shows no queued/sending (or cancel on the banner), then `EV_BACKEND=supabase $PY docs_sync.py` → 0 errors.
+- **R3** `python3 deploy/launchd.py prod remove` (8× removed); `rm "$HOME/Library/Application Support/emanant-hq/cutover-done"`.
+- **R4** Online, with Supabase and the mailbox reachable: `$PY scripts/export_json.py ~/EmanantHQ-rollback` (Zelle keys → mailbox numbers).
+- **R5 Ⓘ** (overwrites the live JSON — Ibrahim's OK): `K=~/EmanantHQ-before-rollback-$(date +%s); mkdir $K; cp -p ~/EmanantHQ/*.json $K/; cp ~/EmanantHQ-rollback/*.json ~/EmanantHQ/`; restore the old jobs: `for L in dashboard watch; do cp "$HOME/Library/Application Support/emanant-hq/com.emanantvisuals.$L.plist.before-prod" ~/Library/LaunchAgents/com.emanantvisuals.$L.plist; launchctl enable gui/$UID/com.emanantvisuals.$L; launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.emanantvisuals.$L.plist; done; for J in 4b085dd26f09 7e6dfe1efe4f f312cc6d841d; do hermes cron resume $J; done` → both old jobs listed, http://127.0.0.1:8787 serves data.
+- **Known gap:** if Supabase itself is down, there is no tested path from a nightly backup to the old JSON files yet (`restore_drill.py` deletes its throwaway database, and `db.py` only speaks TLS to Supabase). Data is safe in the backups; building `restore_local.py` is a Stage 2 item.
+- Pending contract fills (`~/EmanantHQ/contracts/pending`) are made by hand, not by the app, so the cloud period can't create new ones that a rollback would miss.
 
 ---
 

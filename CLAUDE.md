@@ -38,7 +38,7 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `legacy.py` | Schema v2 ⇄ old JSON shape: one converter used by the import, the checker and the website (`legacy_shape` keeps absent keys / untypable originals) |
 | `api/index.py`, `vercel.json`, `.vercelignore` | Vercel entry: server.py behind Supabase login + allowlist, read-only (403 on saves). `.vercelignore` is an allowlist |
 | `mailer.py`, `outbox_send.py` | Email: one builder/sender; cloud mode queues in `outbox` (same transaction as the save), the Mac sender sends (never re-sends an interrupted email) |
-| `scripts/test_step3.py` | Step 3 test: outbox, dry run (expect 13/13) |
+| `scripts/test_step3.py` | Step 3 test: outbox, dry run (expect 18/18) |
 | `docstore.py`, `docs_sync.py`, `scripts/load_files.py` | Contract files: `files` table + registry (cloud), Mac copy into Documents (never overwrites/deletes), loader for existing files + wording |
 | `scripts/test_step4.py` | Step 4 test: contracts online (expect 14/14) |
 | `deploy/launchd.py` | Installs/removes the Mac background jobs: `shadow` (step 5) or `prod` (cutover); keeps the originals |
