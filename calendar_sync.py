@@ -14,6 +14,25 @@ HORIZON = 400  # days ahead
 DRY = "--dry" in sys.argv
 SEP, RS = "\x1f", "\x1e"
 
+def ensure_calendar_running(wait=60):
+    """A launchd job can't launch Calendar via AppleScript (error -600 "Application isn't running"),
+    so open it hidden and in the background first, then wait until it answers."""
+    import time
+    if subprocess.run(["pgrep", "-x", "Calendar"], capture_output=True).returncode != 0:
+        subprocess.run(["open", "-g", "-j", "-a", "Calendar"], capture_output=True, timeout=30)
+    deadline, err = time.monotonic() + wait, ""
+    while time.monotonic() < deadline:          # every call is time-limited: a Calendar dialog can't hang the job
+        try:
+            r = subprocess.run(["osascript", "-e", 'tell application "Calendar" to count calendars'],
+                               capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                return
+            err = r.stderr.strip()
+        except subprocess.TimeoutExpired:
+            err = "Calendar did not answer within 20 s (a dialog open?)"
+        time.sleep(1)
+    raise RuntimeError("Calendar did not start within %ds: %s" % (wait, err[:200]))
+
 def osa(script, timeout=300):
     r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0: raise RuntimeError(r.stderr.strip()[:400])
@@ -58,6 +77,7 @@ def secs(dt): return int((dt - EPOCH).total_seconds())
 
 # ---------- desired events ----------
 want = {}
+ensure_calendar_running()
 def add(key, title, start, end, allday, notes=""):
     want[key] = dict(key=key, title=title, start=start, end=end, allday=allday, notes=f"evsync:{key}\n{notes}".strip())
 

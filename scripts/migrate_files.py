@@ -40,10 +40,13 @@ def sha(p):
 from docstore import clean  # noqa: E402  (one copy of the naming rule)
 
 
-def sb(*args):
+def sb(*args, exists_ok=False):
     p = subprocess.run(["supabase", *args], capture_output=True, text=True)
     if p.returncode != 0:
-        sys.exit(f"supabase {args[0]} {args[1]} failed: {p.stderr.strip()[-300:]}")
+        if exists_ok and "KeyAlreadyExists" in p.stdout + p.stderr:
+            return None                                       # already archived; caller verifies the bytes
+        # the CLI prints its errors as JSON on stdout, so show both streams
+        sys.exit(f"supabase {args[0]} {args[1]} failed: {(p.stderr.strip() or p.stdout.strip())[-300:]}")
     return p.stdout
 
 
@@ -74,14 +77,18 @@ def main(scratch):
         shutil.copy2(f["_src"], local)                       # copy, never move
         if sha(local) != f["sha256"]:
             sys.exit("source file changed while copying; re-run")
+        # re-runnable: an object that is already there is never overwritten; the download check
+        # below then proves it is byte-identical to the local file (else the run fails)
         sb("storage", "cp", "--linked", "--experimental", "--content-type", f["type"],
-           local, f"ss:///contracts/{f['key']}")
+           local, f"ss:///contracts/{f['key']}", exists_ok=True)
     ok = 0
     for i, f in enumerate(plan):
         back = os.path.join(down, str(i))
         sb("storage", "cp", "--linked", "--experimental", f"ss:///contracts/{f['key']}", back)
         ok += sha(back) == f["sha256"]
     print(f"downloaded back and SHA-256 identical: {ok} / {len(plan)}")
+    if ok != len(plan):
+        sys.exit("archive differs from the local files (an existing object is never overwritten); manifest NOT written")
 
     manifest = [{k: v for k, v in f.items() if k != "_src"} for f in plan]
     tag = "ev" + secrets.token_hex(8)

@@ -5,12 +5,12 @@ Read this first, then `docs/ROADMAP.md` (the plan and the source of truth for st
 ## What this is
 Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-person Houston wedding photography business: Eman (spelled E-m-a-n) shoots, Ibrahim (the user) runs the business. Today it runs **locally on Ibrahim's Mac** (Python stdlib server on `localhost:8787`, JSON files as the database). We are migrating it to **GitHub (this public repo) + Vercel Hobby (free) + Supabase Free**, phase by phase, per `docs/ROADMAP.md`. Mail/Zelle/brief/calendar syncs stay on the Mac permanently; a Next.js mobile-first rebuild comes later (Stage 3).
 
-**Status:** Phase 0 ✅ (Supabase linked, sign-ups off) · Phase 1 ✅ (code in this repo, leak checks) · Phase 2 ✅ (schema v1; live test 92/92) · Phase 3 ✅ (data + 23 files copied, verified exact; Mac still live) · Phase 4a ✅ · **Live (read-only, login) at https://ev-dashboard-tan.vercel.app** · **Schema v2 normalized** (verify 15/15) · **Next: v2 save path, then 4b job routes, 4c outbox, 4d renderer/errors.**
+**Status:** **Stage 1 done — cutover 2026-11-17: Supabase is the live database**, Mac jobs = `deploy/launchd.py prod` (8 jobs), cloud saves on at https://ev-dashboard-tan.vercel.app. Old system frozen (rollback R1–R5 in the roadmap until 2026-12-01). **Next: Stage 2 (phases 8–11).**
 
 ## Hard rules (from Ibrahim — never break)
 1. **Never delete or move existing files** in `~/EmanantHQ`, `~/Documents/Emanant Visuals`, or the Obsidian vault. Copy, don't move. Edits happen in this repo only. Scratch files you create yourself may be deleted (and must be, if they contain client data).
 2. **Nothing sensitive in git, ever.** This repo is PUBLIC. No client names/emails/phones/notes/amounts, no personal or business email addresses, no phone numbers, no prices, no contract wording, no keys. Those go in Supabase (`settings` table / private Storage) or in gitignored `.env.local`.
-3. **Don't touch the live system** (`~/EmanantHQ`, its launchd jobs, the running server on :8787) until the roadmap's cutover phase, and only after Ibrahim approves.
+3. **Don't touch the live system** (Supabase data, the prod launchd jobs, the server on :8787) except through the app/scripts; `~/EmanantHQ` is the frozen pre-cutover copy (rollback only, with Ibrahim's OK).
 4. **Never ask for or accept passwords/keys in chat.** Never print the Supabase `service_role` key or any secret. Using the anon key is fine.
 5. **Never push without Ibrahim's explicit "push".** Show him the staged file list + leak-check result first.
 6. Don't send email, run the live sync scripts, or trigger real side effects (alerts, notifications, contract emails) while testing.
