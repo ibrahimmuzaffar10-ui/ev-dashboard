@@ -33,9 +33,12 @@ def refuse_after_cutover(what):
     the tests that reload Supabase when they finish) were built for the rehearsal. After the cutover
     the cloud IS the live data, so they refuse (2026-11-17: a post-cutover test run reloaded the
     frozen pre-cutover copy). Deliberate restore with Ibrahim's OK: EV_RELOAD_LIVE=1."""
+    test_db = os.environ.get("EV_TEST_DB") == "1" and os.environ.get("EV_DB_HOST") in ("127.0.0.1", "localhost")
+    if test_db:
+        return                                        # scripts/testdb.py: a private local copy, never the live one
     if os.path.exists(CUTOVER_MARKER) and os.environ.get("EV_RELOAD_LIVE") != "1":
         raise SystemExit(f"{what}: refused - after the cutover this would overwrite the LIVE cloud data. "
-                         "Only for a restore Ibrahim approved: EV_RELOAD_LIVE=1.")
+                         "Tests: run them through scripts/testdb.py. A restore Ibrahim approved: EV_RELOAD_LIVE=1.")
 
 
 LOCK_KEY = 0x45564851                              # 'EVHQ'

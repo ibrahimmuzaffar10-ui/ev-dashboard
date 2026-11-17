@@ -10,6 +10,7 @@
 !README.md
 !CLAUDE.md
 !docs/ROADMAP.md
+!docs/OPERATIONS.md
 
 !evenv.py
 !db.py
@@ -57,6 +58,8 @@
 !scripts/test_step3.py
 !scripts/test_step4.py
 !scripts/test_step8.py
+!scripts/testdb.py
+!scripts/restore_local.py
 !scripts/load_files.py
 !scripts/shadow_compare.py
 !deploy/launchd.py

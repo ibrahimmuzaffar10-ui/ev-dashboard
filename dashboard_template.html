@@ -114,6 +114,7 @@ table.mini{width:100%;border-collapse:collapse;margin-top:4px}table.mini th{posi
     <button class="btn primary" id="addBtn">+ Add lead</button>
   </div>
 </header>
+<div id="macoff" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:var(--rb);color:var(--r);border:1px solid rgba(168,35,26,.25);font-size:13px"></div>
 <div id="outbox" style="display:none;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:var(--yb);color:var(--y);border:1px solid rgba(138,101,0,.25);font-size:13px">
   <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><b id="obTitle"></b><button class="btn" id="obToggle" style="padding:4px 10px;font-size:12px">Show</button></div>
   <div id="obList" style="display:none;margin-top:8px"></div>
@@ -536,6 +537,17 @@ async function boot(){
   if(!LIVE) document.getElementById('addBtn').style.display='none';
   render();
   loadOutbox();
+  loadMacHealth(); setInterval(loadMacHealth, 5*60*1000);
+}
+// Phase 9: on the website, say plainly when the Mac (email watcher + sender) is offline
+async function loadMacHealth(){
+  if(!LIVE||['127.0.0.1','localhost'].includes(location.hostname))return;   // on the Mac itself it is obviously online
+  let h;try{const r=await fetch('/api/health');if(!r.ok)return;h=await r.json()}catch(e){return}
+  const box=document.getElementById('macoff');
+  if(h.mac_online){box.style.display='none';return}
+  const ago=h.watcher_minutes_ago==null?'a while':h.watcher_minutes_ago<120?h.watcher_minutes_ago+' min':Math.round(h.watcher_minutes_ago/60)+' h';
+  box.textContent=`💻 Mac offline · last email check ${ago} ago — new emails, Zelle and replies aren't being picked up until it's back online`+(h.emails_waiting?` · ${h.emails_waiting} email${h.emails_waiting>1?'s':''} waiting to send`:'')+'. Edits here still save.';
+  box.style.display='block';
 }
 boot();
 </script></body></html>
