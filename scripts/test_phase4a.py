@@ -15,6 +15,8 @@ os.environ.setdefault("EV_ALLOW_JSON", "1")   # tests run JSON servers on scratc
 import evenv  # noqa: E402,F401  (loads .env.local: EV_JOB_TOKEN)
 import evtime  # noqa: E402
 import legacy  # noqa: E402
+import db  # noqa: E402
+db.refuse_after_cutover("test_phase4a.py")
 
 
 def same(x, y):

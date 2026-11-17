@@ -49,9 +49,10 @@ def jobs(mode):
         base = {"EV_BACKEND": "supabase"}
         return [
             job("com.emanantvisuals.dashboard", "server.py", dict(base, EV_PORT="8787"), keepalive=True, log="dashboard"),
-            # every 5 min, like the old live job: at 1 min, ~1,440 runs/day each fetch the whole dataset
-            # (Supabase Free egress 5 GB/month) and log in to iCloud 3x (review finding H3)
-            job("com.emanantvisuals.watch", "watch.py", base, interval=300, log="watch"),
+            # every 5 min with the Phase 8 quick check (EV_WATCH_QUICK): a run with no new mail reads only
+            # iCloud envelope lists, not Supabase; a full run (~300-400 KB of Supabase egress) happens only on
+            # new mail/retries + the 6:45 AM and 9 PM sweeps. 1 min would mean ~4,300 iCloud logins/day (H3)
+            job("com.emanantvisuals.watch", "watch.py", dict(base, EV_WATCH_QUICK="1"), interval=300, log="watch"),
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
             # hourly, but only backs up once per Houston day (a sleeping laptop at 2 AM no longer skips the day)

@@ -10,6 +10,7 @@ import json, os, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import db, legacy  # noqa: E402
+db.refuse_after_cutover("migrate_v2.py")
 
 D = os.path.expanduser(os.environ["EV_DATA_DIR"])
 def load(f):

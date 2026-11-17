@@ -41,6 +41,7 @@
 !scripts/test_rollback_keys.py
 !scripts/normalize_alert_times.py
 !scripts/outbox_admin.py
+!scripts/lead_admin.py
 !scripts/weekly_report.py
 !deploy/weekly_report_prompt.md
 !scripts/profile_keys.py
@@ -55,6 +56,7 @@
 !scripts/test_step2.py
 !scripts/test_step3.py
 !scripts/test_step4.py
+!scripts/test_step8.py
 !scripts/load_files.py
 !scripts/shadow_compare.py
 !deploy/launchd.py

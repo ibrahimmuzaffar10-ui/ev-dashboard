@@ -12,6 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ["EV_BACKEND"] = "supabase"
 import db, evenv  # noqa: E402
+db.refuse_after_cutover("test_step3.py")
 
 SCRATCH = sys.argv[1]
 SNAP, DRY = os.path.join(SCRATCH, "snap"), os.path.join(SCRATCH, "outbox-dry")

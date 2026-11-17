@@ -1,6 +1,7 @@
 """Inbox watcher: turns new emails in Eman's iCloud into dashboard alerts.
 
-Runs every 5 minutes (launchd com.emanantvisuals.watch). Read-only on the mailbox.
+Runs every 5 minutes (launchd com.emanantvisuals.watch). Read-only on the mailbox. In prod most runs are a
+quick check (iCloud envelope lists vs a local cache, no Supabase); see quick_check().
 - Website form (Formspree)  -> new lead (Unanswered) + alert
 - Chase Zelle "You received money" -> payment import + alert
 - Email from a known client      -> alert ("client replied")
@@ -147,6 +148,93 @@ def search_all(mailbox, since, size=200, max_pages=25):
     raise RuntimeError(f"{mailbox}: more than {size * max_pages} emails since {since}; not marking the run OK")
 
 
+# ---- Phase 8: cheap check. Most runs find no new mail; a full run downloads the whole dataset from
+# Supabase (~300-400 KB). The quick check asks iCloud for the envelope lists only (same folders, same
+# window, same keys as the full run) and compares them with a local cache that is written only after a
+# full run's state is saved in Supabase. The cache can only cause an EXTRA full run, never a skipped
+# email: anything unknown, missing, failed or unreadable -> full run.
+QUICK = os.environ.get("EV_WATCH_QUICK") == "1"                 # prod launchd job only; tests run full every time
+CACHE_PATH = os.path.expanduser(os.environ.get("EV_WATCH_CACHE", "~/Library/Caches/emanant-hq/watch_quick.json"))
+CACHE_V = 1
+FULL_AT = ((6, 45), (21, 0))       # forced full runs: before the 7 AM brief (sign-by reminders) + end-of-day sweep
+FULL_MAX_GAP = datetime.timedelta(hours=12)
+
+
+def env_key(e):
+    """The exact key the full run uses for an Inbox/Junk envelope."""
+    mid = e.get("message-id")
+    return mid or f"{'junk' if e.get('junk') else 'inbox'}:{e['id']}"
+
+
+def unread_flags(envs):
+    return {(e.get("message-id") or e["id"]): not any(f.get("iana") == "seen" for f in e.get("flags", [])) for e in envs}
+
+
+def full_due(c, now):
+    """Reason a full run is needed regardless of mail, or '' if none."""
+    try:
+        last = datetime.datetime.fromisoformat(c["last_full"])
+    except Exception:
+        return "no last full run"
+    if not c.get("ok"):
+        return "last full run had failures"
+    if not (now - FULL_MAX_GAP < last <= now):
+        return "last full run over 12 h ago (or clock moved)"
+    for h, m in FULL_AT:
+        b = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if last < b <= now:
+            return f"scheduled sweep {h:02d}:{m:02d}"
+    return ""
+
+
+def quick_check(now=None):
+    """'' = nothing new since the last full run (safe to stop), else the reason a full run is needed."""
+    now = now or evtime.now_ct()
+    try:
+        with open(CACHE_PATH) as fh:
+            c = json.load(fh)
+        if c.get("v") != CACHE_V or not isinstance(c.get("seen"), list) or not c.get("since"):
+            return "cache unreadable"
+    except Exception:
+        return "no cache"
+    why = full_due(c, now)
+    if why:
+        return why
+    seen = set(c["seen"])
+    try:
+        envs = search_all("Inbox", c["since"]) + [dict(j, junk=True) for j in search_all("Junk", c["since"])]
+        sent = search_all("Sent Messages", c["since"])
+    except Exception as ex:
+        return f"mailbox check failed ({str(ex)[:80]})"
+    for e in envs:
+        if env_key(e) not in seen and not (not e.get("message-id") and e["id"] in seen):
+            return "new mail"
+    for e in sent:
+        if "sent:" + (e.get("message-id") or e["id"]) not in seen:
+            return "new sent mail"
+    if unread_flags(envs) != c.get("flags"):
+        return "read/unread changed"
+    return ""
+
+
+def write_cache(S, since, flags, ok):
+    """After the full run's state is saved: what the next quick checks compare against."""
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    c = {"v": CACHE_V, "since": since, "seen": sorted(k for k in S.rows if S.seen(k)), "flags": flags, "ok": bool(ok),
+         "last_full": evtime.now_ct().isoformat(timespec="seconds")}
+    tmp = CACHE_PATH + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(c, fh)
+    os.replace(tmp, CACHE_PATH)
+
+
+def drop_cache():
+    try:
+        os.remove(CACHE_PATH)
+    except FileNotFoundError:
+        pass
+
+
 def main():
     os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
     lock = open(LOCK_PATH, "w")
@@ -154,16 +242,26 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)        # one run at a time
     except BlockingIOError:
         print("another run is still going; skipped"); return
+    if QUICK:
+        why = quick_check()
+        if not why:
+            heartbeat(True)
+            print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} quick check: no new mail")
+            return
+        drop_cache()          # a full run that dies half-way must not leave a cache that looks current
+        print("full run:", why)
     S = State()
     st = S.meta
     all_ok = True
     # always look back 3 days (IMAP "after" is strict and mail can arrive late around midnight); `seen` dedupes
     since = min(st.get("since") or "9999", (evtime.today_ct() - datetime.timedelta(days=3)).isoformat())
     envs = search_all("Inbox", since)
+    junk_ok = True
     try:  # also screen Junk so inquiries caught by the spam filter aren't missed
         for j in search_all("Junk", since):
             j["junk"] = True; envs.append(j)
     except Exception as ex:
+        junk_ok = False
         print("junk scan skipped:", ex)
     data = json.load(urllib.request.urlopen(API + "/api/data", timeout=20))
     known = {l["src_email"].lower(): l for l in data["leads"] if l.get("src_email")}
@@ -309,12 +407,17 @@ def main():
     except Exception as ex:
         all_ok = False
         print("sent check skipped:", ex)
+    flags = unread_flags(envs)
+    flags_ok = True
     try:
-        flags = {(e.get("message-id") or e["id"]): not any(f.get("iana") == "seen" for f in e.get("flags", [])) for e in envs}
         post("/api/alert-meta", flags)
     except Exception as ex:
+        flags_ok = False
         print("unread sync skipped:", ex)
     S.save(all_ok)
+    if QUICK:
+        # only now is everything in Supabase; a failed unread sync is retried by forcing the next run to be full
+        write_cache(S, since, flags if flags_ok else None, all_ok and junk_ok)
     heartbeat(all_ok)
     print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} checked {len(envs)} emails, {made} alerts" + ("" if all_ok else " (some failed: will retry)"))
 

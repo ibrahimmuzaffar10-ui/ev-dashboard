@@ -28,6 +28,16 @@ CUTOVER_MARKER = os.path.expanduser("~/Library/Application Support/emanant-hq/cu
 if not CLOUD and os.path.exists(CUTOVER_MARKER) and os.environ.get("EV_ALLOW_JSON") != "1":
     raise SystemExit("Emanant HQ now runs on Supabase: set EV_BACKEND=supabase (the old JSON files are frozen). "
                      "Tests on a scratch copy: EV_ALLOW_JSON=1.")
+def refuse_after_cutover(what):
+    """Scripts that REPLACE the whole cloud database from a JSON snapshot (migrate_v2/migrate_data and
+    the tests that reload Supabase when they finish) were built for the rehearsal. After the cutover
+    the cloud IS the live data, so they refuse (2026-11-17: a post-cutover test run reloaded the
+    frozen pre-cutover copy). Deliberate restore with Ibrahim's OK: EV_RELOAD_LIVE=1."""
+    if os.path.exists(CUTOVER_MARKER) and os.environ.get("EV_RELOAD_LIVE") != "1":
+        raise SystemExit(f"{what}: refused - after the cutover this would overwrite the LIVE cloud data. "
+                         "Only for a restore Ibrahim approved: EV_RELOAD_LIVE=1.")
+
+
 LOCK_KEY = 0x45564851                              # 'EVHQ'
 _tls = threading.local()
 
