@@ -116,7 +116,7 @@ try:
     w("update public.outbox set attempts = 4, next_try_at = now() where subject = 'TEST will fail'")
     rc, out = sender(dry="/dev/null/cannot-write")
     oid = q("select outbox_id, status from public.outbox where subject = 'TEST will fail'")[0]
-    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-failed:{oid[0]}")[0][0]
+    alerted = q("select count(*) from public.alert_emails where email_key like :k", k=f"outbox-failed:{oid[0]}:%")[0][0]
     check("E. 5th failure -> 'failed' + a dashboard alert", oid[1] == "failed" and alerted == 1)
 
     # ---- F. interrupted send is never re-sent
@@ -125,7 +125,7 @@ try:
     before = set(os.listdir(DRY))
     rc, out = sender()
     row = q("select outbox_id, status from public.outbox where subject = 'TEST interrupted'")[0]
-    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-unknown:{row[0]}")[0][0]
+    alerted = q("select count(*) from public.alert_emails where email_key like :k", k=f"outbox-unknown:{row[0]}:%")[0][0]
     check("F. interrupted -> 'unknown' + alert, not re-sent", row[1] == "unknown" and alerted == 1 and set(os.listdir(DRY)) == before)
 
     # ---- G. one sender at a time
@@ -145,7 +145,7 @@ try:
     before = set(os.listdir(DRY))
     rc, out = sender(EV_OUTBOX_DRY_FAIL="maybe")
     row = q("select outbox_id, status from public.outbox where subject = 'TEST maybe'")[0]
-    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-unknown:{row[0]}")[0][0]
+    alerted = q("select count(*) from public.alert_emails where email_key like :k", k=f"outbox-unknown:{row[0]}:%")[0][0]
     rc, out = sender()
     row2 = q("select status from public.outbox where subject = 'TEST maybe'")[0][0]
     check("H. broke while sending -> 'unknown' + alert, and NOT sent on the next run", row[1] == "unknown" and alerted == 1 and row2 == "unknown" and set(os.listdir(DRY)) == before)
@@ -154,7 +154,7 @@ try:
     before = set(os.listdir(DRY))
     rc, out = sender()
     row = q("select outbox_id, status from public.outbox where subject = 'TEST stale'")[0]
-    alerted = q("select count(*) from public.alert_emails where email_key = :k", k=f"outbox-old:{row[0]}")[0][0]
+    alerted = q("select count(*) from public.alert_emails where email_key like :k", k=f"outbox-old:{row[0]}:%")[0][0]
     check("H. waited > 12 h -> not sent late; 'failed' + alert", row[1] == "failed" and alerted == 1 and set(os.listdir(DRY)) == before)
 
     # ---- I. the dashboard's "Emails waiting" banner: list, Cancel, Send again

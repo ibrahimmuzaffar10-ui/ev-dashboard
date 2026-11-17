@@ -55,7 +55,8 @@ try:
     check("data loads (localhost)", req("GET", "/api/data", host=f"localhost:{PORT}"), 200)
     check("same-site JSON save works", req("POST", "/api/brief-ack", ack, {**J, "Origin": f"http://127.0.0.1:{PORT}"}), 200)
     test_alert = json.dumps({"type": "unclear", "title": "TEST guard", "detail": "TEST", "email_id": "TEST-guard-key", "done": True})
-    check("watcher route works with the secret", req("POST", "/api/alert-new", test_alert, {**J, "X-EV-Job": TOKEN}), 200 if TOKEN else 403)
+    check("EV_JOB_TOKEN is set in .env.local", bool(TOKEN), True)
+    check("watcher route works with the secret", req("POST", "/api/alert-new", test_alert, {**J, "X-EV-Job": TOKEN}), 200)
     # attacks a web page could make
     check("DNS rebinding: foreign Host read refused", req("GET", "/api/data", host="attacker.example"), 403)
     check("DNS rebinding: foreign Host save refused", req("POST", "/api/brief-ack", ack, J, host="attacker.example"), 403)

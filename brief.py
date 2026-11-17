@@ -8,17 +8,21 @@ import json, os, datetime, re
 HERE = os.path.dirname(os.path.abspath(__file__))
 import evenv  # noqa: E402  (loads .env.local)
 import db  # noqa: E402  (JSON files or Supabase, per EV_BACKEND)
-DATA = db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json")))
-PAYS = db.payments_all()
-st = db.doc_read("brief_state") or {}
-SHADOW = os.environ.get("EV_SHADOW") == "1"   # test runs: no Mac pop-up
 import sys
 from zoneinfo import ZoneInfo
 ct = datetime.datetime.now(ZoneInfo("America/Chicago")).replace(tzinfo=None)
 import evtime  # noqa: E402
 now = evtime.now_ct()  # Houston time, same clock as alert timestamps
-# runs hourly from the scheduler; only speaks at 7 AM and 10 PM Central (robust to the laptop's own time zone)
-if "--force" not in sys.argv and not (ct.hour in (7, 22) and ct.minute < 30): sys.exit(0)
+SHADOW = os.environ.get("EV_SHADOW") == "1"   # test runs: no Mac pop-up
+st = db.doc_read("brief_state") or {}
+# runs hourly from the scheduler; speaks once per slot: morning (7-11 AM) and night (from 10 PM),
+# Houston time, so a laptop that wakes at 7:40 still gets its morning brief (and only once)
+if "--force" not in sys.argv:
+    slot = 7 if 7 <= ct.hour < 11 else 22 if ct.hour >= 22 else None
+    if slot is None or (st.get("last") or "") >= ct.replace(hour=slot, minute=0, second=0, microsecond=0).isoformat(timespec="seconds"):
+        sys.exit(0)                               # checked before loading any data (hourly runs stay cheap)
+DATA = db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json")))
+PAYS = db.payments_all()
 since = st.get("last") or (now - datetime.timedelta(hours=15)).isoformat(timespec="seconds")
 today = now.date()
 L = {l["id"]: l for l in DATA["leads"]}

@@ -29,6 +29,22 @@ MAX_TRIES = 5
 STALE_MIN = 15
 MAX_AGE_H = float(os.environ.get("EV_OUTBOX_MAX_AGE_H", "12"))
 LOCK_PATH = os.path.expanduser(os.environ.get("EV_OUTBOX_LOCK", "~/Library/Caches/emanant-hq/outbox.lock"))
+# emails that CERTAINLY did not go out but couldn't be put back in the queue (the database was
+# unreachable too, e.g. Wi-Fi dropped): remembered here and re-queued first thing next run, so they
+# don't turn into a false "may have been sent" alert 15 minutes later
+JOURNAL = LOCK_PATH + ".notsent.json"
+
+
+def journal(add=None):
+    try:
+        ids = set(json.load(open(JOURNAL)))
+    except Exception:
+        ids = set()
+    if add is None:
+        return ids
+    ids.add(add)
+    with open(JOURNAL, "w") as fh:
+        json.dump(sorted(ids), fh)
 
 
 def alert(title, detail, key):
@@ -84,34 +100,47 @@ def main():
     c = db._connect()
     sent = failed = 0
     try:
+        ids = journal()
+        if ids:                                   # certainly-not-sent emails from a run that lost the database
+            tx(c, "update public.outbox set status = 'queued', attempts = greatest(attempts - 1, 0), next_try_at = now(), "
+                  "last_error = 'not sent (connection lost); queued again' where status = 'sending' and outbox_id = any(:ids)", ids=list(ids))
+            os.remove(JOURNAL)
         # interrupted sends: never re-send automatically
-        for oid, subject in tx(c, "update public.outbox set status = 'unknown', last_error = 'interrupted while sending' "
-                                  "where status = 'sending' and claimed_at < now() - make_interval(mins => :m) returning outbox_id, subject", m=STALE_MIN):
-            alert("Email may not have been sent: check Sent", f"“{subject}” was interrupted while sending. Check Mail › Sent; resend by hand if it isn't there.", f"outbox-unknown:{oid}")
+        for oid, subject, gen in tx(c, "update public.outbox set status = 'unknown', last_error = 'interrupted while sending' "
+                                  "where status = 'sending' and claimed_at < now() - make_interval(mins => :m) "
+                                  "returning outbox_id, subject, extract(epoch from created_at)::bigint", m=STALE_MIN):
+            alert("Email may not have been sent: check Sent", f"“{subject}” was interrupted while sending. Check Mail › Sent; resend by hand if it isn't there.", f"outbox-unknown:{oid}:{gen}")
         # waited too long (Mac off for hours): don't send late without a person deciding
-        for oid, subject in tx(c, "update public.outbox set status = 'failed', last_error = 'waited too long: not sent automatically' "
-                                  "where status = 'queued' and created_at < now() - (:h * interval '1 hour') returning outbox_id, subject", h=MAX_AGE_H):
+        for oid, subject, gen in tx(c, "update public.outbox set status = 'failed', last_error = 'waited too long: not sent automatically' "
+                                  "where status = 'queued' and created_at < now() - (:h * interval '1 hour') "
+                                  "returning outbox_id, subject, extract(epoch from created_at)::bigint", h=MAX_AGE_H):
             alert("Email not sent: waited too long", f"“{subject}” waited over {MAX_AGE_H:g} hours (the Mac was offline) and was not sent "
-                  "automatically. Check it is still right, then use Send again on the dashboard (Emails waiting).", f"outbox-old:{oid}")
+                  "automatically. Check it is still right, then use Send again on the dashboard (Emails waiting).", f"outbox-old:{oid}:{gen}")
         while True:
             got = tx(c, "update public.outbox set status = 'sending', claimed_at = now(), attempts = attempts + 1 "
                         "where outbox_id = (select outbox_id from public.outbox where status = 'queued' and next_try_at <= now() "
                         "                   order by outbox_id limit 1 for update skip locked) "
-                        "returning outbox_id, message_id, to_addr, subject, body, in_reply_to, attempts")
+                        "returning outbox_id, message_id, to_addr, subject, body, in_reply_to, attempts, extract(epoch from created_at)::bigint")
             if not got:
                 break
-            row, attempts = got[0][:6], got[0][6]
+            row, attempts, gen = got[0][:6], got[0][6], got[0][7]
             try:
-                send_one(c, row)
+                try:
+                    send_one(c, row)
+                except SystemExit as ex:              # a missing setting (evenv.need) before anything was sent
+                    raise mailer.NotSent(f"setting missing: {ex}")
             except mailer.MaybeSent as ex:
                 tx(c, "update public.outbox set status = 'unknown', last_error = :e where outbox_id = :o", e=str(ex)[:300], o=row[0])
-                alert("Email may not have been sent: check Sent", f"“{row[3]}”: {str(ex)[:200]}. Check Mail › Sent; use Send again only if it isn't there.", f"outbox-unknown:{row[0]}")
+                alert("Email may not have been sent: check Sent", f"“{row[3]}”: {str(ex)[:200]}. Check Mail › Sent; use Send again only if it isn't there.", f"outbox-unknown:{row[0]}:{gen}")
                 failed += 1
                 continue
             except mailer.NotSent as ex:
                 if ex.network:              # offline: try again soon, don't use up a try; stop this run
-                    tx(c, "update public.outbox set status = 'queued', attempts = attempts - 1, last_error = :e, "
-                          "next_try_at = now() + interval '2 minutes' where outbox_id = :o", e=str(ex)[:300], o=row[0])
+                    try:
+                        tx(c, "update public.outbox set status = 'queued', attempts = attempts - 1, last_error = :e, "
+                              "next_try_at = now() + interval '2 minutes' where outbox_id = :o", e=str(ex)[:300], o=row[0])
+                    except Exception:
+                        journal(row[0])     # database gone too: re-queue next run (it certainly wasn't sent)
                     failed += 1
                     break
                 err = str(ex)[:300]
@@ -123,7 +152,7 @@ def main():
                 continue
             if attempts >= MAX_TRIES:
                 tx(c, "update public.outbox set status = 'failed', last_error = :e where outbox_id = :o", e=err, o=row[0])
-                alert("Email could not be sent", f"“{row[3]}” failed {attempts} times: {err}", f"outbox-failed:{row[0]}")
+                alert("Email could not be sent", f"“{row[3]}” failed {attempts} times: {err}", f"outbox-failed:{row[0]}:{gen}")
             else:
                 tx(c, "update public.outbox set status = 'queued', last_error = :e, "
                       "next_try_at = now() + make_interval(mins => :w) where outbox_id = :o", e=err, w=2 ** (attempts - 1), o=row[0])

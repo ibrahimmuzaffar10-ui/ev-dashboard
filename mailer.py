@@ -67,7 +67,9 @@ def icloud_pw():
     return r.stdout.strip()
 
 
-NET = (OSError, smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError)   # socket.timeout is an OSError
+# NB: smtplib.SMTPException is a subclass of OSError, so server REPLIES (wrong password, refused)
+# must be caught before plain OSError (no connection), or a bad password looks like "offline".
+REPLY = (smtplib.SMTPResponseException, smtplib.SMTPNotSupportedError)
 
 
 def send(msg):
@@ -78,20 +80,24 @@ def send(msg):
     pw = icloud_pw()
     try:
         s = smtplib.SMTP("smtp.mail.me.com", 587, timeout=30)
-    except NET as ex:
+    except smtplib.SMTPConnectError as ex:
+        raise NotSent(f"iCloud mail not available: {ex}", network=True)
+    except REPLY as ex:
+        raise NotSent(f"iCloud mail refused the connection: {ex}")
+    except OSError as ex:
         raise NotSent(f"can't reach iCloud mail: {ex}", network=True)
     try:
         try:
             s.starttls(); s.login(login, pw)
-        except NET as ex:
-            raise NotSent(f"connection to iCloud mail dropped: {ex}", network=True)
-        except smtplib.SMTPException as ex:
+        except REPLY as ex:                       # wrong/revoked app password etc.: a real failure
             raise NotSent(f"iCloud refused the login: {ex}")
+        except OSError as ex:                     # dropped connection / timeout
+            raise NotSent(f"connection to iCloud mail dropped: {ex}", network=True)
         try:
             s.send_message(msg)
         except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as ex:
             raise NotSent(f"iCloud refused the email: {ex}")
-        except (NET, smtplib.SMTPException) as ex:
+        except OSError as ex:                     # broke during the hand-over: may have gone out
             raise MaybeSent(f"connection broke while sending: {ex}")
     finally:
         try: s.quit()

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Monday weekly report, run by Claude Code (replaces the Hermes cron job "Emanant Visuals — weekly
-report", which failed 11/2, 11/9 and 11/16). Read-only on business data: Claude may only fetch the
-local dashboard's /api/data and write the report note in its own vault folder.
+report", which failed 11/2, 11/9 and 11/16). This script fetches the data and computes every number;
+Claude only writes the text and has NO file or shell tools (the facts contain text typed by clients
+and strangers, so a prompt injection must have nothing to act with). This script saves the note.
 
   .venv/bin/python scripts/weekly_report.py            (launchd: Mondays 9 AM, see deploy/launchd.py)
   .venv/bin/python scripts/weekly_report.py --force    (run even if this week's report exists)
@@ -81,11 +82,24 @@ def main():
     prompt = open(os.path.join(ROOT, "deploy", "weekly_report_prompt.md")).read()
     prompt = prompt.replace("{REPORT_DIR}", REPORT_DIR).replace("{TODAY}", today)
     prompt += "\n\nFACTS (computed exactly from the dashboard; use these numbers, don't recount):\n" + json.dumps(facts(data), ensure_ascii=False, indent=1)
-    r = subprocess.run([CLAUDE, "-p", "--allowedTools", "Read,Write,Edit,Skill", "--add-dir", REPORT_DIR],
+    r = subprocess.run([CLAUDE, "-p", "--tools", "Skill", "--allowedTools", "Skill"],
                        input=prompt, cwd=REPORT_DIR, capture_output=True, text=True, timeout=1800)
-    head = (r.stdout.strip().splitlines() or [""])[-1]
-    ok = r.returncode == 0 and os.path.exists(out)
-    print(("report OK: " if ok else "report FAILED: ") + (head if ok else (r.stderr or r.stdout)[-400:]))
+    text = r.stdout.strip()
+    ok = r.returncode == 0 and text.startswith("HEADLINE:") and "\n# Weekly Report" in text
+    if ok:
+        head, body = text.split("\n", 1)
+        head = head[len("HEADLINE:"):].strip()
+        tmp = out + ".part"
+        with open(tmp, "w") as fh:
+            fh.write(f"---\ncreated: {today}\ntags: [emanant-visuals, weekly-report, claude]\n---\n\n{body.strip()}\n")
+        os.replace(tmp, out)
+        idx = os.path.join(REPORT_DIR, "Weekly Reports.md")
+        cur = open(idx).read() if os.path.exists(idx) else "# Weekly Reports\n\n## Reports\n"
+        line = f"- [[Weekly Report {today}]]"
+        if line not in cur:
+            with open(idx, "w") as fh:
+                fh.write(cur.rstrip("\n") + "\n" + line + "\n")
+    print(("report OK: " + head) if ok else ("report FAILED: " + (r.stderr or r.stdout)[-400:]))
     notify(head if ok else "Weekly report failed: check ~/Library/Logs/emanant-hq/weekly-report.log")
     return 0 if ok else 1
 

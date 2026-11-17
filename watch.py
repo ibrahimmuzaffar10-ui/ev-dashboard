@@ -288,7 +288,7 @@ def main():
                 except Exception as ex: all_ok = False; print("reminder failed:", ex)
     # Eman's Sent folder: replying to a lead moves it from unanswered -> open (waiting on client) and records last contact
     try:
-        sent = hj("envelope", "search", "-m", "Sent Messages", "-s", "200", f"after {since} order by date asc")["envelopes"]
+        sent = search_all("Sent Messages", since)
         byaddr = {}
         for l in data["leads"]:
             for a2 in (l.get("src_email"), l.get("alt_email")):
