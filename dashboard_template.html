@@ -111,6 +111,7 @@ table.mini{width:100%;border-collapse:collapse;margin-top:4px}table.mini th{posi
         <button data-f="drafts">Contract Drafts</button><button data-f="signed">Signed Contracts</button><button data-f="questionnaires">Questionnaires</button><button data-f="contracts">Final templates</button>
       </div></div>
     <span class="badge" id="mode"></span>
+    <button class="btn" id="checkBtn" style="display:none" title="Check Eman's inbox for new emails now">🔄 Check email now</button>
     <button class="btn primary" id="addBtn">+ Add lead</button>
   </div>
 </header>
@@ -483,8 +484,10 @@ eiDlg.addEventListener('close',async()=>{const v=eiDlg.returnValue;if(!eiFor||(v
   try{const res=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
     Object.assign(eiFor.r,(await res.json()).lead);if(v==='delete'&&!eiFor.r.schedule.length)delete eiFor.r.schedule;toast(v==='delete'?'Payment removed ✓':'Saved ✓');render()}catch(err){toast('Not saved: '+err.message,true)}});
 // auto-refresh every 60s so new emails/alerts appear without reloading
-setInterval(async()=>{if(!LIVE||document.querySelector('dialog[open]')||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
-  try{const fresh=await (await fetch('/api/data')).json();const before=openAlerts().length;DATA=fresh;TODAY=fresh.today;render();if(openAlerts().length>before)toast('🔔 New alert');}catch(e){}},60000);
+async function refresh(){if(!LIVE||document.hidden||document.querySelector('dialog[open]')||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||document.activeElement?.isContentEditable)return;
+  try{const fresh=await (await fetch('/api/data')).json();const before=openAlerts().length;DATA=fresh;TODAY=fresh.today;render();if(openAlerts().length>before)toast('🔔 New alert');}catch(e){}}
+// every 5 min, and only while someone is looking (each refresh downloads the whole dataset: Supabase egress)
+setInterval(refresh,5*60*1000); document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 document.getElementById('tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;tab=b.dataset.k;sortKey=null;render()};
 document.getElementById('t').onclick=e=>{const th=e.target.closest('th');if(!th||!th.dataset.c)return;const c=th.dataset.c;sortDir=sortKey===c?-sortDir:1;sortKey=c;render()};
 document.getElementById('t').addEventListener('click',async e=>{const b=e.target.closest('.paybtn');if(!b)return;e.stopPropagation();
@@ -538,7 +541,18 @@ async function boot(){
   render();
   loadOutbox();
   loadMacHealth(); setInterval(loadMacHealth, 5*60*1000);
+  if(LIVE) document.getElementById('checkBtn').style.display='';
 }
+// "Check email now" (Ibrahim 11/17): the regular check runs every 2 h; this asks the Mac to check right away
+document.getElementById('checkBtn').onclick=async()=>{const btn=document.getElementById('checkBtn');btn.disabled=true;btn.textContent='🔄 Checking…';
+  try{const r=await fetch('/api/check-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error(await r.text());
+    const req=(await r.json()).requested; toast('Checking email… new alerts appear here in about a minute');
+    for(let i=0;i<16;i++){await new Promise(z=>setTimeout(z,15000));
+      let d;try{d=await (await fetch('/api/outbox')).json()}catch(e){continue}
+      if(d.watcher_at&&d.watcher_at>=req){await refresh();toast('Email checked ✓ '+fmtTime(d.watcher_at));return}}
+    toast("The Mac hasn't checked yet: it will as soon as it's on and online",true)}
+  catch(e){toast('Could not ask for a check: '+e.message,true)}
+  finally{btn.disabled=false;btn.textContent='🔄 Check email now'}};
 // Phase 9: on the website, say plainly when the Mac (email watcher + sender) is offline
 async function loadMacHealth(){
   if(!LIVE||['127.0.0.1','localhost'].includes(location.hostname))return;   // on the Mac itself it is obviously online
@@ -546,7 +560,7 @@ async function loadMacHealth(){
   const box=document.getElementById('macoff');
   if(h.mac_online){box.style.display='none';return}
   const ago=h.watcher_minutes_ago==null?'a while':h.watcher_minutes_ago<120?h.watcher_minutes_ago+' min':Math.round(h.watcher_minutes_ago/60)+' h';
-  box.textContent=`💻 Mac offline · last email check ${ago} ago — new emails, Zelle and replies aren't being picked up until it's back online`+(h.emails_waiting?` · ${h.emails_waiting} email${h.emails_waiting>1?'s':''} waiting to send`:'')+'. Edits here still save.';
+  box.textContent=`💻 Mac offline · last email check ${ago} ago — new emails, Zelle and replies are picked up when it's back online`+(h.emails_waiting?` · ${h.emails_waiting} email${h.emails_waiting>1?'s':''} waiting to send`:'')+'. Edits here still save.';
   box.style.display='block';
 }
 boot();

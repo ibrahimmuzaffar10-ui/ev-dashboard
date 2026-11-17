@@ -314,6 +314,15 @@ class H(BaseHTTPRequestHandler):
         if not self._local_guard(post=True): return
         try:
             body = _no_nul(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"))
+            if self.path == "/api/check-now":              # "Check email now" button (Ibrahim 11/17)
+                at = evtime.now_ct().isoformat(timespec="seconds")
+                if db.CLOUD:
+                    db.doc_write("check_request", {"at": at})   # the Mac's 1-min sender job starts the watcher
+                started = False
+                if self.LOCAL:                                   # on the Mac itself: start it right now
+                    r = subprocess.run(["launchctl", "kickstart", f"gui/{os.getuid()}/com.emanantvisuals.watch"], capture_output=True)
+                    started = r.returncode == 0
+                return self._send(200, json.dumps({"requested": at, "started_now": started}))
             if self.path == "/api/outbox-action":          # the outbox has its own rows; no dataset save
                 try:
                     st = db.outbox_action(body.get("id"), body.get("action"))

@@ -162,9 +162,57 @@ def main():
     try:
         import evtime
         db.doc_write("heartbeat_outbox", {"at": evtime.now_ct().isoformat(timespec="seconds"), "sent": sent, "failed": failed})
+        ping_if_watcher_healthy()
     except Exception as ex:
         print("heartbeat not saved:", ex)
     print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} outbox: {sent} sent, {failed} failed")
+    check_now()
+
+
+def ping_if_watcher_healthy():
+    """healthchecks.io "email watcher" check (15-min period): the email check now runs every 2 h, so this
+    1-min job pings for it, but ONLY while the watcher's last run succeeded within 2.5 h. Mac off, Supabase
+    unreachable or a failing watcher (e.g. the iCloud app password expired) -> no ping -> Ibrahim gets an email."""
+    import evtime
+    url = os.environ.get("EV_HEALTHCHECK_URL")
+    hw = db.read_doc("heartbeat_watch") or {}
+    try:
+        age = (evtime.now_ct() - datetime.datetime.fromisoformat(hw["at"])).total_seconds()
+    except Exception:
+        return
+    testing = os.environ.get("EV_TEST_DB") == "1" or os.environ.get("EV_OUTBOX_DRY")
+    if url and not testing and hw.get("ok") and not hw.get("shadow") and age <= 2.5 * 3600:
+        try: urllib.request.urlopen(url, timeout=10).read()
+        except Exception as ex: print("healthcheck ping failed:", ex)
+
+
+KICK_STAMP = os.path.expanduser("~/Library/Caches/emanant-hq/check_now.kicked")
+
+
+def check_now():
+    """"Check email now" from the dashboard (Mac or website): if a request is newer than the watcher's last
+    run, start the watcher. At most one start per 5 min (a run takes ~1 min; offline it would fail anyway),
+    and requests older than 6 h are dropped (the regular 2-hour run has covered them). Never fails the run."""
+    try:
+        import evtime, subprocess, time
+        req = (db.read_doc("check_request") or {}).get("at")
+        last = (db.read_doc("heartbeat_watch") or {}).get("at") or ""
+        if not req or req <= last:
+            return
+        now = evtime.now_ct()
+        if (now - datetime.datetime.fromisoformat(req)).total_seconds() > 6 * 3600:
+            return
+        try:
+            if time.time() - os.path.getmtime(KICK_STAMP) < 300:
+                return
+        except OSError:
+            pass
+        os.makedirs(os.path.dirname(KICK_STAMP), exist_ok=True)
+        open(KICK_STAMP, "w").close()
+        r = subprocess.run(["launchctl", "kickstart", f"gui/{os.getuid()}/com.emanantvisuals.watch"], capture_output=True, text=True)
+        print("check-now: watcher started" if r.returncode == 0 else "check-now: could not start watcher: " + r.stderr.strip()[:120])
+    except Exception as ex:
+        print("check-now skipped:", ex)
 
 
 if __name__ == "__main__":

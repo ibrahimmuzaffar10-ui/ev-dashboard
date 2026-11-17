@@ -562,8 +562,9 @@ def outbox_list(days=14):
         "from public.outbox where status <> 'sent' and created_at > now() - make_interval(days => :d) "
         "order by outbox_id desc", d=days))
     hb = read_doc("heartbeat_outbox") or {}
+    hw, cr = read_doc("heartbeat_watch") or {}, read_doc("check_request") or {}
     return {"rows": [{"id": r[0], "to": r[1], "subject": r[2], "status": r[3], "attempts": r[4], "error": r[5], "queued": r[6]}
-                     for r in rows], "sender_at": hb.get("at")}
+                     for r in rows], "sender_at": hb.get("at"), "watcher_at": hw.get("at"), "check_requested": cr.get("at")}
 
 
 def outbox_action(oid, action):

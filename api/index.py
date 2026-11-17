@@ -183,7 +183,8 @@ class handler(server.H):
             try: return round((evtime.now_ct() - dt.datetime.fromisoformat(h["at"])).total_seconds() / 60)
             except Exception: return None
         w, o = age(hw), age(ho)
-        mac_ok = w is not None and w <= 15 and not hw.get("shadow")
+        # the email check now runs every 2 h; the sender checks in every minute, so it says whether the Mac is on
+        mac_ok = o is not None and o <= 15
         return self._send(200, json.dumps({"mac_online": mac_ok, "watcher_minutes_ago": w, "sender_minutes_ago": o, "emails_waiting": queued}))
 
     def do_GET(self):

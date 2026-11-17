@@ -19,7 +19,7 @@ SUPPORT = os.path.join(HOME, "Library", "Application Support", "emanant-hq")
 PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
-def job(label, script, env, interval=None, keepalive=False, log=None, at=None, args=(), weekday=None):
+def job(label, script, env, interval=None, keepalive=False, log=None, at=None, args=(), weekday=None, also_at=()):
     d = {"Label": label, "ProgramArguments": [PY, os.path.join(REPO, script), *args], "WorkingDirectory": REPO,
          "EnvironmentVariables": dict({"PATH": PATH}, **env), "RunAtLoad": True,
          "StandardOutPath": os.path.join(LOGS, (log or label) + ".log"), "StandardErrorPath": os.path.join(LOGS, (log or label) + ".log")}
@@ -32,6 +32,8 @@ def job(label, script, env, interval=None, keepalive=False, log=None, at=None, a
         d["RunAtLoad"] = False
         if weekday is not None:
             d["StartCalendarInterval"]["Weekday"] = weekday     # 1 = Monday
+    if also_at:  # fixed times IN ADDITION to the interval (launchd allows both keys; a sleeping Mac runs it on wake)
+        d["StartCalendarInterval"] = [{"Hour": h, "Minute": m} for h, m in also_at]
     return d
 
 
@@ -49,10 +51,10 @@ def jobs(mode):
         base = {"EV_BACKEND": "supabase"}
         return [
             job("com.emanantvisuals.dashboard", "server.py", dict(base, EV_PORT="8787"), keepalive=True, log="dashboard"),
-            # every 5 min with the Phase 8 quick check (EV_WATCH_QUICK): a run with no new mail reads only
-            # iCloud envelope lists, not Supabase; a full run (~300-400 KB of Supabase egress) happens only on
-            # new mail/retries + the 6:45 AM and 9 PM sweeps. 1 min would mean ~4,300 iCloud logins/day (H3)
-            job("com.emanantvisuals.watch", "watch.py", dict(base, EV_WATCH_QUICK="1"), interval=300, log="watch"),
+            # Ibrahim 11/17: every 2 h is enough (reply within the day; never days late) + the 6:45 AM / 9 PM sweeps at
+            # fixed times + a "Check email now" button (dashboard -> check_request -> the 1-min outbox job starts this).
+            # Most runs are the Phase 8 quick check (iCloud envelope lists only, no Supabase download).
+            job("com.emanantvisuals.watch", "watch.py", dict(base, EV_WATCH_QUICK="1"), interval=7200, log="watch", also_at=((6, 45), (21, 0))),
             job("com.emanantvisuals.outbox", "outbox_send.py", base, interval=60, log="outbox"),
             job("com.emanantvisuals.docs-sync", "docs_sync.py", base, interval=300, log="docs-sync"),
             # hourly, but only backs up once per Houston day (a sleeping laptop at 2 AM no longer skips the day)
