@@ -37,6 +37,7 @@ Moving to another host for good: `docs/HOSTING.md`.
 After the cutover, the integration tests run only against a private local copy:
 `.venv/bin/python scripts/testdb.py run .venv/bin/python scripts/test_step2.py <scratch dir with snap/>` (same for test_step3/4).
 Run directly against the live database they refuse (`db.refuse_after_cutover`).
+File-mode tests (`test_local_guard.py`, `test_step8.py`) run with `EV_ALLOW_JSON=1` (scratch files only).
 
 ## Removing a lead safely
 `.venv/bin/python scripts/lead_admin.py delete <id> --name "<exact client name>"` (dry run) → add `--yes`.

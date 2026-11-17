@@ -428,7 +428,7 @@ document.getElementById('t').addEventListener('click',async e=>{const b=e.target
      MF.elements.to.value=a.from_email;MF.elements.subject.value='Re: '+((a.detail||'').split(' — ')[0].split('\n')[0]||'Your message').slice(0,120);
      MF.elements.body.value=`Hi ${first&&!/^[a-z0-9._%+-]+$/.test(first)?first:'there'},\n\nThank you so much for reaching out, and congratulations! [Pick one: Great news, that date works for us! / Unfortunately that date doesn't work for us, but I'd still love to help.]\n\nI'd be more than happy to hop on a quick 15-minute call to hear more about what you have in mind and make sure we can cover everything you need. Just let me know a day and time that works best for you.\n\nLooking forward to chatting!\nEman`;
      mailDlg.showModal()}
-   else if(b.dataset.x==='ignore'){await alertAct(a.id,'ignore');toast('Ignored · future emails from '+(a.from_email||'this sender').split('@').pop()+' won\'t alert')}
+   else if(b.dataset.x==='ignore'){await alertAct(a.id,'ignore');toast('Ignored · future emails from this sender won\'t alert')}
    else if(b.dataset.x==='open'){const l=DATA.leads.find(x=>x.id===a.lead_id);tab='all';document.getElementById('q').value=l?l.client:'';render()}
    else if(b.dataset.x==='lead'){alertForLead=a;F.reset();F.elements.client.value=a.title.replace(/^Possible inquiry: /,'');F.elements.inquiry.value=TODAY;F.elements.notes.value=a.detail+(a.from_email?' ('+a.from_email+')':'');F.elements.channel.value='Email';dlg.showModal()} }  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   catch(err){toast('Not saved: '+err.message,true)}});
@@ -501,7 +501,7 @@ const dlg=document.getElementById('dlg'), F=document.getElementById('addForm');
 F.elements.service.innerHTML=SERVICES.map(s=>`<option value="${s}">${svc(s)}</option>`).join('');
 F.elements.status.innerHTML=OPT.status.map(o=>`<option value="${o[0]}"${o[0]==='unanswered'?' selected':''}>${o[1]}</option>`).join('');
 document.getElementById('addBtn').onclick=()=>{alertForLead=null;F.reset();F.elements.inquiry.value=TODAY;dlg.showModal()};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
-dlg.addEventListener('close',async()=>{if(dlg.returnValue!=='ok')return;const body=Object.fromEntries(new FormData(F));
+dlg.addEventListener('close',async()=>{if(dlg.returnValue!=='ok')return;const body=Object.fromEntries(new FormData(F));if(alertForLead&&alertForLead.from_email)body.src_email=alertForLead.from_email;
   try{const res=await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(await res.text());
     const nl=(await res.json()).lead;DATA.leads.push(nl);toast('Lead added ✓');if(alertForLead){await alertAct(alertForLead.id,'done',nl.id);alertForLead=null}render()}catch(e){toast('Not added: '+e.message,true)}});
 

@@ -63,7 +63,7 @@ export function AlertCard({ a }: { a: CardData }) {
             <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-[15px] text-[var(--ink)]" />
           </label>
           <button disabled={pending || !name.trim()} className="btn btn-primary w-full"
-                  onClick={() => run(addAsLead(a.id, name.trim(), [f.service, ...f.dates, f.time, f.place, f.hours, f.guests, f.excerpt, a.fromEmail && `(${a.fromEmail})`].filter(Boolean).join(" · "), f.iso[0] || ""))}>
+                  onClick={() => run(addAsLead(a.id, name.trim(), [f.service, ...f.dates, f.time, f.place, f.hours, f.guests, f.excerpt, a.fromEmail && `(${a.fromEmail})`].filter(Boolean).join(" · "), f.iso[0] || "", a.fromEmail))}>
             {pending ? "Adding…" : `Add lead${f.iso[0] ? " with event " + f.dates[0] : ""}`}
           </button>
         </div>

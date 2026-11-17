@@ -275,6 +275,9 @@ def main():
     known = {l["src_email"].lower(): l for l in data["leads"] if l.get("src_email")}
     ignore = [x.lower() for x in data.get("ignore_senders", [])]
     watching = set(x.lower() for x in data.get("watch_senders", []))
+    FREE = {"gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com", "outlook.com", "live.com", "msn.com", "icloud.com",
+            "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "comcast.net", "att.net", "sbcglobal.net", "verizon.net", "gmx.com"}
+    ignore = [x for x in ignore if not (x.startswith("@") and x[1:] in FREE)]   # a whole free-mail domain is never blocked
     blocked = lambda f: any(f == x or (x.startswith("@") and (f.endswith(x) or f.endswith("." + x[1:]))) for x in ignore)
     def handle(e, key):
         """Returns 'alert' (an alert was posted) or 'skipped'. Raises on failure (retried next run)."""

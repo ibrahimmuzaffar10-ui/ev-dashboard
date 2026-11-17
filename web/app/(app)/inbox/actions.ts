@@ -13,10 +13,10 @@ export async function notALead(id: string): Promise<Result> {
   try { await oldApi("/api/alert", { id, action: "ignore" }); revalidatePath("/inbox"); return { ok: true, msg: "Hidden · future emails from this sender won't alert" }; } catch (e) { return fail(e); }
 }
 
-export async function addAsLead(id: string, client: string, notes: string, event: string): Promise<Result> {
+export async function addAsLead(id: string, client: string, notes: string, event: string, email: string | null): Promise<Result> {
   try {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
-    const r = await oldApi<{ lead: { id: string } }>("/api/add", { client, channel: "Email", inquiry: today, notes: notes.slice(0, 1000), ...(event ? { event } : {}) });  // leak-check: allow: the app word "inquiry", not client data
+    const r = await oldApi<{ lead: { id: string } }>("/api/add", { client, channel: "Email", inquiry: today, notes: notes.slice(0, 1000), src_email: email || "", ...(event ? { event } : {}) });  // leak-check: allow: the app word "inquiry", not client data
     await oldApi("/api/alert", { id, action: "done", lead_id: r.lead.id });
     revalidatePath("/inbox"); revalidatePath("/leads");
     return { ok: true, msg: `Added ${client} as a lead` };

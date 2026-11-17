@@ -180,6 +180,9 @@ ENUMS = {
     # Phase 8b: Eman's quick 15-min call after a client sends their date (missing = "none")
     "call": {"none", "offered", "booked", "done", "declined"},
 }
+# Personal email providers: "Not a lead" blocks only that one address, never the whole domain
+FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com", "outlook.com", "live.com", "msn.com", "icloud.com",
+             "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "comcast.net", "att.net", "sbcglobal.net", "verizon.net", "gmx.com"}
 TEXT = {"action_note", "notes", "venue", "quote", "client", "call_time"}
 DATES = {"event", "inquiry", "last_contact", "call_on"}  # leak-check: allow: the app word "inquiry" (default lead name), not client data
 NUMS = {"total", "paid"}
@@ -206,6 +209,11 @@ def store(data, change):
     with open(tmp, "w") as f:
         json.dump(data, f, indent=1, ensure_ascii=False)
     os.replace(tmp, DATA_PATH)
+
+def src_email(v):
+    """The client's address from the alert they were added from, so their next email is recognized as theirs."""
+    v = str(v or "").strip().lower()[:200]
+    return v if re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", v) else ""
 
 def validate(field, value):
     if field in ENUMS:
@@ -348,6 +356,7 @@ class H(BaseHTTPRequestHandler):
                     ig = d.setdefault("ignore_senders", [])
                     fe = (al.get("from_email") or "").lower()
                     dom = ".".join(fe.split("@")[-1].split(".")[-2:]) if "@" in fe else ""
+                    if dom in FREE_MAIL: dom = ""     # never block a whole free-mail domain (11/17: a free-mail domain had been blocked for 4 weeks)
                     if act == "ignore":
                         al["ignored"] = True
                         for x in (fe, "@" + dom if dom else ""):
@@ -551,7 +560,7 @@ class H(BaseHTTPRequestHandler):
                                 event_text=body.get("event") or "", venue="", replied=validate("replied", body.get("replied", "no")),
                                 status=validate("status", body.get("status", "unanswered")), quote="", total=None, paid=None,
                                 contract="n/a", retainer="n/a", balance="n/a", gallery="n/a", review="none", lost_reason="", price_obj=False,
-                                source="", notes=str(body.get("notes", ""))[:1000], src_email="", ig_ref="", action_note="")
+                                source="", notes=str(body.get("notes", ""))[:1000], src_email=src_email(body.get("src_email")), ig_ref="", action_note="")
                     d["leads"].append(lead)
                     store(d, {"id": lead["id"], "client": client, "field": "*", "old": None, "new": "added"})
                     return self._send(200, json.dumps({"lead": lead}, ensure_ascii=False))

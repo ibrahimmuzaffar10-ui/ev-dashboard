@@ -13,10 +13,10 @@ const KIND: Record<string, [string, string]> = {
 
 function when(at: string | null, today: string) {
   if (!at) return "";
-  const d = at.slice(0, 10);
-  const t = new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
-  if (d === today) return t;
-  return new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const dt = new Date(at);                                       // stored with its time zone; shown in Houston time
+  const d = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(dt);
+  if (d === today) return dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Chicago" });
 }
 
 async function List() {
