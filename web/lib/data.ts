@@ -17,7 +17,7 @@ export type Alert = {
   leadId: string | null; done: boolean; unread: boolean; count: number;
 };
 export type Installment = { leadId: string; index: number; label: string | null; due: string | null; amount: number; paid: boolean; paidOn: string | null };
-export type Payment = { on: string | null; amount: number; sender: string | null; leadId: string | null; label: string | null; method: string | null };
+export type Payment = { emailId: string; on: string | null; amount: number; sender: string | null; leadId: string | null; label: string | null; method: string | null };
 
 // Houston "today"; waits for the request first (Next.js must not freeze the clock into a prerender)
 export async function todayCT(): Promise<string> {
@@ -78,12 +78,12 @@ export async function loadMoney(): Promise<{ inst: Installment[]; pays: Payment[
   const sb = await supabaseServer();
   const [i, p] = await Promise.all([
     sb.from("installments").select("lead_id, position, label, due_on, amount, paid, paid_on").order("due_on"),
-    sb.from("payments").select("received_on, amount, sender, lead_id, client_label, method").order("received_on", { ascending: false }),
+    sb.from("payments").select("email_id, received_on, amount, sender, lead_id, client_label, method").order("received_on", { ascending: false }),
   ]);
   const error = i.error?.message || p.error?.message;
   return {
     inst: (i.data || []).map((x) => ({ leadId: x.lead_id, index: x.position, label: x.label, due: x.due_on, amount: Number(x.amount || 0), paid: !!x.paid, paidOn: x.paid_on })),
-    pays: (p.data || []).map((x) => ({ on: x.received_on, amount: Number(x.amount || 0), sender: x.sender, leadId: x.lead_id, label: x.client_label, method: x.method })),
+    pays: (p.data || []).map((x) => ({ emailId: x.email_id, on: x.received_on, amount: Number(x.amount || 0), sender: x.sender, leadId: x.lead_id, label: x.client_label, method: x.method })),
     error,
   };
 }
@@ -103,4 +103,14 @@ export async function loadHandled(): Promise<{ alerts: Alert[]; error?: string }
   const r = await sb.from("alerts").select("alert_id, at, type, title, detail, from_email, lead_id, done, unread, count, ignored").eq("done", true).order("at", { ascending: false }).limit(30);
   if (r.error) return { alerts: [], error: r.error.message };
   return { alerts: (r.data || []).map((x) => ({ id: x.alert_id, at: x.at, type: x.type, title: (x.ignored ? "Not a lead · " : "") + (x.title || ""), detail: x.detail || "", fromEmail: x.from_email, leadId: x.lead_id, done: true, unread: false, count: x.count || 1 })) };
+}
+
+export type ContractPrefill = { fields: Record<string, string>; total: number | null; retainer: number | null; issued: string | null; signed: string | null } | null;
+export async function loadContract(leadId: string): Promise<ContractPrefill> {
+  if (demo()) return null;
+  await connection();
+  const sb = await supabaseServer();
+  const r = await sb.from("contracts").select("fields, total, retainer, issued_on, signed_on").eq("lead_id", leadId).order("contract_id", { ascending: false }).limit(1);
+  const c = r.data?.[0];
+  return c ? { fields: (c.fields || {}) as Record<string, string>, total: c.total === null ? null : Number(c.total), retainer: c.retainer === null ? null : Number(c.retainer), issued: c.issued_on, signed: c.signed_on } : null;
 }

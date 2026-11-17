@@ -451,6 +451,33 @@ def payments_save(pays):
         _tls.tx["done"] = True
 
 
+def payment_link(email_id, lead_id, client):
+    """Match ONE payment to a lead (or unmatch with lead_id=None) without rewriting the list, read and written
+    under the save lock, so a Zelle import running at the same moment can never be lost."""
+    if not CLOUD:
+        pays = payments_all()
+        p = next((x for x in pays if x.get("email_id") == email_id), None)
+        if not p: raise ValueError("payment not found")
+        p["lead_id"] = lead_id
+        if lead_id: p["client"] = client
+        else: p.pop("client", None)
+        return doc_write("payments", pays, indent=1)
+    import legacy
+    with locked(None):
+        c = _tls.tx["conn"]
+        got = c.run("select row_to_json(t)::text from public.payments t where email_id = :e for update", e=email_id)
+        if not got:
+            raise ValueError("payment not found")
+        r = json.loads(got[0][0])
+        p = legacy.rebuild_flat(r, legacy.PAY)
+        p["lead_id"] = lead_id
+        if lead_id: p["client"] = client
+        else: p.pop("client", None)
+        _upd(c, "payments", legacy.split_flat(p, r["position"], legacy.PAY), "email_id", email_id)
+        c.run("commit")
+        _tls.tx["done"] = True
+
+
 def email_rows():
     """{key: (status, attempts)} for every email the watcher has looked at (cloud)."""
     return {k: (s, a) for k, s, a in _read_only(lambda c: c.run("select key, status, attempts from public.emails"))}

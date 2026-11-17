@@ -31,3 +31,20 @@ export async function addLead(_: NewLeadState, form: FormData): Promise<NewLeadS
   revalidatePath("/leads");
   redirect(`/leads/${id}`);
 }
+
+export type ContractBody = {
+  id: string; fields: Record<string, string>; total: number; retainer: number;
+  days: { event: string; date: string; start: string; end: string; hours: string }[];
+  plan: { label: string; amount: number; due: string }[];
+};
+export async function createContract(body: ContractBody): Promise<Result> {
+  try {
+    const r = await oldApi<{ mailed: true | string }>("/api/contract/create", body);
+    revalidatePath(`/leads/${body.id}`);
+    return r.mailed === true ? { ok: true, msg: "Contract draft made · emailed to Eman to review (sent by the Mac)" } : { ok: true, msg: `Draft saved, but the email failed: ${r.mailed}` };
+  } catch (e) { return fail(e); }
+}
+
+export async function schedule(id: string, payload: { action: "add" | "update" | "delete"; index?: number; label?: string; amount?: number; due?: string; paid?: boolean }): Promise<Result> {
+  try { await oldApi("/api/schedule", { id, ...payload }); revalidatePath(`/leads/${id}`); revalidatePath("/money"); return { ok: true, msg: payload.action === "delete" ? "Removed" : "Saved" }; } catch (e) { return fail(e); }
+}

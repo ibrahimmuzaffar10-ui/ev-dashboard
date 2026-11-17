@@ -293,6 +293,8 @@ class H(BaseHTTPRequestHandler):
                 b = json.load(open(bp)) if os.path.exists(bp) else None
                 ack = json.load(open(ap)).get("id") if os.path.exists(ap) else None
             return self._send(200, json.dumps({"brief": b, "acked": bool(b) and ack == b.get("id")}, ensure_ascii=False))
+        if self.path == "/api/contract-options":          # for the phone app's contract form (same choices as the dashboard)
+            return self._send(200, json.dumps({"privacy": evenv.as_list("EV_PRIVACY_OPTIONS") or ["Standard usage"]}, ensure_ascii=False))
         if self.path == "/api/outbox":
             return self._send(200, json.dumps(db.outbox_list(), ensure_ascii=False))
         if self.path == "/calendar":
@@ -322,6 +324,15 @@ class H(BaseHTTPRequestHandler):
         if not self._local_guard(post=True): return
         try:
             body = _no_nul(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"))
+            if self.path == "/api/payment-match":            # match an unmatched payment to a lead (or undo); own lock, one row
+                lid = body.get("lead_id") or None
+                lead = next((l for l in load()["leads"] if l.get("id") == lid), None) if lid else None
+                if lid and not lead: return self._send(404, "lead not found", "text/plain")
+                try:
+                    db.payment_link(str(body.get("email_id") or ""), lid, lead["client"] if lead else None)
+                except ValueError as ex:
+                    return self._send(404, str(ex), "text/plain")
+                return self._send(200, json.dumps({"ok": True}))
             if self.path == "/api/check-now":              # "Check email now" button (Ibrahim 11/17)
                 at = evtime.now_ct().isoformat(timespec="seconds")
                 if db.CLOUD:

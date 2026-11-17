@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { loadLeads, loadMoney, todayCT } from "@/lib/data";
-import { Pill, Section, StatusPill, day, daysFrom, money } from "@/components/ui";
+import { Section, StatusPill, day, daysFrom, money } from "@/components/ui";
 import { serviceLabel } from "@/components/ui";
 import { Skeleton } from "@/components/page-title";
 import { Editor } from "./editor";
-import { PayButton } from "./pay-button";
+import { PlanEditor } from "./plan";
 
 
 
@@ -45,15 +45,10 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
 
       <Section title="Details"><Editor lead={l} /></Section>
 
-      {(plan.length > 0 || got.length > 0) && (
+      {(l.status === "booked" || l.status === "completed" || plan.length > 0 || got.length > 0) && (
         <Section title="Payments">
           <ul className="card divide-y divide-[var(--line)]">
-            {plan.map((i, k) => (
-              <li key={"i" + k} className="flex items-center justify-between px-4 py-3">
-                <div><div className="font-medium">{i.label || "Installment"}</div><div className="text-sm text-[var(--muted)]">{i.paid ? `Paid ${day(i.paidOn)}` : i.due ? `Due ${day(i.due)}` : "No date"}</div></div>
-                <div className="flex flex-col items-end gap-1 text-right"><div className="font-semibold tabular-nums">{money(i.amount)}</div>{i.paid ? <Pill tone="green">Paid</Pill> : <>{i.due && daysFrom(today, i.due) < 0 && <Pill tone="red">Overdue</Pill>}<PayButton id={l.id} index={i.index} label={i.label || "installment"} /></>}</div>
-              </li>
-            ))}
+            <PlanEditor id={l.id} items={plan.map((i) => ({ ...i, overdue: !i.paid && !!i.due && daysFrom(today, i.due) < 0, dueText: i.paid ? `Paid ${day(i.paidOn)}` : i.due ? `Due ${day(i.due)}` : "No date" }))} />
             {got.map((p, k) => (
               <li key={"p" + k} className="flex items-center justify-between px-4 py-3">
                 <div><div className="font-medium">Received{p.method ? ` · ${p.method}` : ""}</div><div className="text-sm text-[var(--muted)]">{day(p.on)}</div></div>
@@ -65,7 +60,9 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
       )}
 
       {l.email && <p className="mt-4 text-center text-[15px]"><a href={`mailto:${l.email}`} className="text-[var(--accent)]">{l.email}</a></p>}
-      <p className="mt-4 text-center text-xs text-[var(--muted)]">Contracts are still created in the <a className="underline" href="https://ev-dashboard-tan.vercel.app">full dashboard</a>.</p>
+      {["open", "booked", "unanswered"].includes(l.status) && (
+        <Link href={`/leads/${l.id}/contract`} className="btn mt-4 w-full">📄 {l.contract && !["n/a", "unknown"].includes(l.contract) ? "Re-create contract" : "Create contract"}</Link>
+      )}
     </>
   );
 }

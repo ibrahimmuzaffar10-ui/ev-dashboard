@@ -37,7 +37,7 @@ export const demoInst: Installment[] = [
   { leadId: "L901", index: 2, label: "Final balance", due: iso(-2), amount: 1950, paid: false, paidOn: null },
 ];
 export const demoPays: Payment[] = [
-  { on: iso(-2), amount: 500, sender: "TEST SENDER", leadId: null, label: null, method: "Zelle" },
-  { on: iso(-30), amount: 1500, sender: "TEST", leadId: "L901", label: null, method: "Zelle" },
+  { emailId: "demo-1", on: iso(-2), amount: 500, sender: "TEST SENDER", leadId: null, label: null, method: "Zelle" },
+  { emailId: "demo-2", on: iso(-30), amount: 1500, sender: "TEST", leadId: "L901", label: null, method: "Zelle" },
 ];
 export const demoVendors = [{ vendor_id: 1, name: "TEST Planner Co.", channel: "Instagram", type: "Planner", note: "Send gallery within 7 days", follow: null }];
