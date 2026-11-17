@@ -139,6 +139,7 @@ Split `schedule` + `contract_terms` into tables · custom domain `hq.emanantvisu
 ---
 
 ## Decisions
+- 2026-11-16 (Ibrahim): the "roadmap officially complete" milestone (with a celebration) is declared only when Stages 1–3 are all done, not after Stage 1; then his friend rejoins for the next round of changes. Stage 4 stays optional.
 | Decision | Status |
 |---|---|
 | Stack: GitHub + Vercel Hobby + Supabase Free | ✅ 11/9 (Hobby non-commercial clause = accepted risk; exit drill = Phase 11) |
