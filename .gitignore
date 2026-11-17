@@ -102,3 +102,4 @@ web/node_modules/
 web/.next/
 !web/public/sw.js
 !web/app/manifest.ts
+!web/app/files/**/*.ts

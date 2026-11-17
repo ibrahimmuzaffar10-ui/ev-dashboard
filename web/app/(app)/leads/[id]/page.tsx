@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { loadLeads, loadMoney, todayCT } from "@/lib/data";
+import { loadDocs, loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Section, StatusPill, day, daysFrom, money } from "@/components/ui";
 import { serviceLabel } from "@/components/ui";
 import { Skeleton } from "@/components/page-title";
@@ -13,7 +13,7 @@ import { PlanEditor } from "./plan";
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const today = await todayCT();
-  const [{ leads }, { inst, pays }] = await Promise.all([loadLeads(), loadMoney()]);
+  const [{ leads }, { inst, pays }, docs] = await Promise.all([loadLeads(), loadMoney(), loadDocs(id)]);
   const l = leads.find((x) => x.id === id);
   if (!l) notFound();
   const plan = inst.filter((i) => i.leadId === id);
@@ -59,6 +59,20 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </Section>
       )}
 
+      {docs.length > 0 && (
+        <Section title="Documents">
+          <ul className="card divide-y divide-[var(--line)]">
+            {docs.map((d) => (
+              <li key={d.id}><a href={`/files/${d.id}`} target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3">
+                <span className="text-lg" aria-hidden>{d.name.toLowerCase().endsWith(".pdf") ? "📄" : "📝"}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-[15px]">{d.kind === "signed" ? "Signed contract" : d.kind === "draft" ? "Contract draft" : d.kind === "questionnaire" ? "Questionnaire" : d.kind}</span>
+                  <span className="block truncate text-[12px] text-[var(--muted)]">{d.name.toLowerCase().endsWith(".pdf") ? "PDF · opens here" : "Word · downloads"}</span></span>
+                <span className="text-[var(--muted)]">›</span>
+              </a></li>
+            ))}
+          </ul>
+        </Section>
+      )}
       {l.email && <p className="mt-4 text-center text-[15px]"><a href={`mailto:${l.email}`} className="text-[var(--accent)]">{l.email}</a></p>}
       {["open", "booked", "unanswered"].includes(l.status) && (
         <Link href={`/leads/${l.id}/contract`} className="btn mt-4 w-full">📄 {l.contract && !["n/a", "unknown"].includes(l.contract) ? "Re-create contract" : "Create contract"}</Link>

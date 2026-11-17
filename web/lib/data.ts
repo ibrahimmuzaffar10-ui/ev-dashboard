@@ -114,3 +114,15 @@ export async function loadContract(leadId: string): Promise<ContractPrefill> {
   const c = r.data?.[0];
   return c ? { fields: (c.fields || {}) as Record<string, string>, total: c.total === null ? null : Number(c.total), retainer: c.retainer === null ? null : Number(c.retainer), issued: c.issued_on, signed: c.signed_on } : null;
 }
+
+export type Doc = { id: number; kind: string; name: string };
+export async function loadDocs(leadId: string): Promise<Doc[]> {
+  if (demo()) return [];
+  await connection();
+  const sb = await supabaseServer();
+  const c = await sb.from("contracts").select("contract_id").eq("lead_id", leadId);
+  const ids = (c.data || []).map((x) => x.contract_id);
+  if (!ids.length) return [];
+  const d = await sb.from("documents").select("document_id, kind, original_path, position").in("contract_id", ids).order("kind").order("position");
+  return (d.data || []).map((x) => ({ id: x.document_id, kind: x.kind, name: String(x.original_path || "").split("/").pop() || "file" }));
+}
