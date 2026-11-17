@@ -348,7 +348,7 @@ def main():
                 post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:400]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})
                 notify("Unclear message", f"{name}: {subj or t[:60]}")
                 return "alert"
-            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": subj + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + re.split(r"\sOn .{5,80} wrote:", t)[0][:600]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             notify("Possible inquiry", f"{name}: {subj}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         else:
             return "skipped"   # newsletter / noise / blocked sender

@@ -1,17 +1,33 @@
 @import "tailwindcss";
+/* scan these explicitly: the repo .gitignore is an allowlist, and Tailwind skips git-ignored files */
+@source "../app";
+@source "../components";
 
-/* Same color language as the current dashboard: green = done, yellow = in progress, orange = needs us, red = late */
+/* Emanant HQ: warm ivory + charcoal, one emerald accent (no purple). Status colors are muted, never neon. */
 :root {
-  --bg: #f6f5f2; --panel: #ffffff; --ink: #1c1c1f; --muted: #6b6b73; --line: #e4e2dc;
-  --green: #1e7b3a; --green-bg: #e3f5e8; --yellow: #8a6500; --yellow-bg: #fff4cc;
-  --orange: #a14a00; --orange-bg: #ffe5cc; --red: #a8231a; --red-bg: #fde0dc;
+  --bg: #f6f3ec; --panel: #fffdf8; --panel-2: #f0ece2; --ink: #1d1b17; --muted: #6e685c; --line: #e5dfd2;
+  --accent: #1f5c47; --accent-ink: #f6f3ec; --accent-soft: #dcebe3;
+  --amber: #8a5a00; --amber-bg: #fbecc8; --blue: #2f4f6e; --blue-bg: #e1e9f1;
+  --green: #1f6b45; --green-bg: #dcefe2; --red: #9d2b20; --red-bg: #f8dfda; --grey: #6e685c; --grey-bg: #ebe7de;
+  --shadow: 0 1px 2px rgb(29 27 23 / 5%), 0 4px 16px rgb(29 27 23 / 4%);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121214; --panel: #1c1c20; --ink: #ececef; --muted: #a0a0aa; --line: #2e2e34;
-    --green: #6fd08c; --green-bg: #173323; --yellow: #f0c75e; --yellow-bg: #3a2f10;
-    --orange: #f3a35c; --orange-bg: #3d2512; --red: #f2877d; --red-bg: #3f1915;
+    --bg: #121311; --panel: #1b1c19; --panel-2: #232420; --ink: #ecebe5; --muted: #a29d91; --line: #2d2e29;
+    --accent: #7fc4a5; --accent-ink: #10201a; --accent-soft: #1d3329;
+    --amber: #f0c36a; --amber-bg: #3a2c10; --blue: #9dbbd8; --blue-bg: #1c2a38;
+    --green: #8fd3aa; --green-bg: #173225; --red: #f19a8f; --red-bg: #3c1a16; --grey: #a29d91; --grey-bg: #262722;
+    --shadow: none;
   }
 }
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+}
 html, body { background: var(--bg); color: var(--ink); }
-body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+body { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+.chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; line-height: 18px; background: var(--panel-2); color: var(--ink); white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 12px; padding: 9px 14px; font-size: 14px; font-weight: 550; border: 1px solid var(--line); background: var(--panel); color: var(--ink); min-height: 40px; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn:disabled { opacity: .55; }

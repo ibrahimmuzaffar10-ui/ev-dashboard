@@ -61,6 +61,7 @@
 !scripts/test_step8.py
 !scripts/testdb.py
 !scripts/restore_local.py
+!scripts/set_login_password.py
 !scripts/load_files.py
 !scripts/shadow_compare.py
 !deploy/launchd.py
@@ -93,6 +94,7 @@
 !web/app/**/*.css
 !web/app/favicon.ico
 !web/lib/**/*.ts
+!web/components/**/*.tsx
 web/.env*
 web/node_modules/
 web/.next/
