@@ -7,6 +7,7 @@ import { PageTitle, Skeleton } from "@/components/page-title";
 import { logout } from "../login/actions";
 import { oldGet } from "@/lib/bridge";
 import { Brief } from "@/components/brief";
+import { PushToggle } from "@/components/push-toggle";
 
 function Attn({ href, n, label, tone }: { href: string; n: number; label: string; tone: string }) {
   return (
@@ -112,13 +113,16 @@ async function Footer() {
   const sb = await supabaseServer();
   const { data: { user } } = process.env.EV_DEMO === "1" && !process.env.VERCEL ? { data: { user: { email: "demo preview" } } } : await sb.auth.getUser();
   return (
-    <footer className="mt-10 space-y-3 text-center text-xs text-[var(--muted)]">
+    <>
+    {process.env.VAPID_PUBLIC_KEY && <div className="mt-8"><PushToggle vapid={process.env.VAPID_PUBLIC_KEY} /></div>}
+    <footer className="mt-8 space-y-3 text-center text-xs text-[var(--muted)]">
       <div className="flex justify-center gap-4">
         <Link href="/vendors" className="underline-offset-2 hover:underline">Vendors</Link>
         <a href="https://ev-dashboard-tan.vercel.app" className="underline-offset-2 hover:underline">Full dashboard</a>
       </div>
       <form action={logout}>Signed in as {user?.email} · <button className="underline">Sign out</button></form>
     </footer>
+    </>
   );
 }
 

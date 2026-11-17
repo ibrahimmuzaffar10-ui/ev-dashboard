@@ -1,0 +1,5 @@
+# Mac-only extras for the repo .venv (Vercel uses requirements.txt). Phase 16 web push sender.
+pywebpush==2.5.0
+py-vapid==1.9.6
+http-ece==1.2.1
+cryptography==50.0.2

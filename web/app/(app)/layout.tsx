@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { BottomNav, NavBar } from "@/components/nav";
+import { Live } from "@/components/live";
 import { loadAlerts } from "@/lib/data";
 
 async function NavWithCount() {
@@ -12,6 +13,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     <>
       <main className="mx-auto max-w-xl px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))]">{children}</main>
       <Suspense fallback={<NavBar path="" inbox={0} />}><NavWithCount /></Suspense>
+      <Live />
     </>
   );
 }

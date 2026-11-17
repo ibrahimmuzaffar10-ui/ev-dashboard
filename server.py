@@ -324,6 +324,9 @@ class H(BaseHTTPRequestHandler):
         if not self._local_guard(post=True): return
         try:
             body = _no_nul(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"))
+            if self.path == "/api/push-test":                  # phone app "Send a test notification": the Mac sends it
+                if db.CLOUD: db.doc_write("push_test_request", {"at": evtime.now_ct().isoformat(timespec="seconds")})
+                return self._send(200, json.dumps({"ok": True}))
             if self.path == "/api/payment-match":            # match an unmatched payment to a lead (or undo); own lock, one row
                 lid = body.get("lead_id") or None
                 lead = next((l for l in load()["leads"] if l.get("id") == lid), None) if lid else None

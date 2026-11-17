@@ -167,6 +167,7 @@ def main():
         print("heartbeat not saved:", ex)
     print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} outbox: {sent} sent, {failed} failed")
     check_now()
+    push_test()
 
 
 def ping_if_watcher_healthy():
@@ -184,6 +185,21 @@ def ping_if_watcher_healthy():
     if url and not testing and hw.get("ok") and not hw.get("shadow") and age <= 2.5 * 3600:
         try: urllib.request.urlopen(url, timeout=10).read()
         except Exception as ex: print("healthcheck ping failed:", ex)
+
+
+def push_test():
+    """"Send a test notification" in the phone app -> one push to every device, once per request."""
+    try:
+        req = (db.read_doc("push_test_request") or {}).get("at")
+        done = (db.read_doc("push_test_done") or {}).get("at") or ""
+        if not req or req <= done:
+            return
+        import evtime, push
+        db.doc_write("push_test_done", {"at": req})          # first, so a failure can't repeat it every minute
+        n = push.send("Emanant HQ", "Notifications work ✓ New inquiries, replies and payments will show up like this.", "/")
+        print(f"push test: sent to {n} device(s)")
+    except Exception as ex:
+        print("push test skipped:", ex)
 
 
 KICK_STAMP = os.path.expanduser("~/Library/Caches/emanant-hq/check_now.kicked")

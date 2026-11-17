@@ -69,6 +69,11 @@ def notify(title, msg):
     if SHADOW: return
     t = title.replace('"', "'")[:80]; m = msg.replace('"', "'")[:180]
     subprocess.run(["osascript", "-e", f'display notification "{m}" with title "Emanant HQ" subtitle "{t}" sound name "Glass"'], capture_output=True)
+    try:                                   # Phase 16: the same alert as a push to the phone app (never fails the run)
+        import push
+        push.send(title, msg, "/inbox")
+    except Exception as ex:
+        print("push skipped:", ex)
 
 def ct_time(d):
     """An email's date (UTC 'YYYY-MM-DDTHH:MM:SSZ' or with an offset) -> Houston time 'YYYY-MM-DD HH:MM'."""

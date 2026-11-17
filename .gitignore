@@ -20,8 +20,10 @@
 !docstore.py
 !docs_sync.py
 !outbox_send.py
+!push.py
 !evtime.py
 !requirements.txt
+!requirements-mac.txt
 !server.py
 !watch.py
 !calendar_sync.py
@@ -98,3 +100,5 @@
 web/.env*
 web/node_modules/
 web/.next/
+!web/public/sw.js
+!web/app/manifest.ts
