@@ -19,6 +19,7 @@ SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 ANON = os.environ.get("SUPABASE_ANON_KEY", "")
 WRITES = os.environ.get("EV_CLOUD_WRITES") == "1"
 PAGES = ("/", "/index.html", "/calendar")
+NEW_APP = os.environ.get("EV_NEW_APP_URL", "https://emanant-hq-web.vercel.app")
 _seen = {}                                    # sha256(token) -> (valid until, user id, allowed)
 
 
@@ -193,6 +194,10 @@ class handler(server.H):
             return self._selftest()
         if p == "/api/_keepalive":
             return self._keepalive()
+        # Phase 18 (2026-11-17): the screens moved to the phone app; this project stays the API + contract renderer.
+        # Old bookmarks land on the new app. Set EV_OLD_UI=1 on Vercel to bring the old screens back (rollback).
+        if os.environ.get("EV_OLD_UI") != "1" and (p in PAGES or p in ("/login", "/logout")):
+            return self._redirect(NEW_APP)
         if p == "/login":
             return self._login_page()
         if p == "/logout":

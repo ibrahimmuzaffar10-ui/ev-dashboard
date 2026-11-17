@@ -1,6 +1,6 @@
 # Emanant HQ — what to do when something is off
 
-**Daily use: the phone app** https://emanant-hq-web.vercel.app (Home Screen app; also works in a Mac browser). It saves through
+**Daily use: the phone app** https://emanant-hq-web.vercel.app (Phase 18, 2026-11-17: the old website's screens now forward here; rollback = set `EV_OLD_UI=1` on the ev-dashboard Vercel project + redeploy) (Home Screen app; also works in a Mac browser). It saves through
 the original dashboard's server (https://ev-dashboard-tan.vercel.app), which must stay online until Phase 18 decides its future.
 Notifications: Today → 🔔. They show the client's name and email subject; to hide them on the lock screen, iPhone Settings →
 Notifications → Show Previews → When Unlocked.

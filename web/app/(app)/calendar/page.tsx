@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { loadLeads, todayCT } from "@/lib/data";
 import { Empty, Pill, day, daysFrom } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
+import { MonthGrid, type CalEvent } from "@/components/month-grid";
 
 async function Cal() {
   const today = await todayCT();
@@ -11,11 +12,17 @@ async function Cal() {
   const items = leads.filter((l) => ["booked", "open", "unanswered"].includes(l.status))
     .flatMap((l) => l.days.filter((d) => d.day && d.day >= today).map((d) => ({ l, d, booked: l.status === "booked" })))
     .sort((a, b) => a.d.day!.localeCompare(b.d.day!));
-  if (!items.length) return <Empty>Nothing on the calendar yet.</Empty>;
+  // month view gets past days too (completed shoots), the list below stays upcoming-only
+  const events: CalEvent[] = leads.filter((l) => ["booked", "completed", "open", "unanswered"].includes(l.status))
+    .flatMap((l) => l.days.filter((d) => d.day).map((d) => ({ date: d.day!, client: l.client, label: d.label, time: d.start && d.end ? `${d.start}–${d.end}` : d.start, booked: ["booked", "completed"].includes(l.status), leadId: l.id })));
+  const grid = <MonthGrid events={events} today={today} />;
+  if (!items.length) return <>{grid}<div className="mt-4"><Empty>Nothing upcoming yet.</Empty></div></>;
   const months = new Map<string, typeof items>();
   for (const it of items) { const k = it.d.day!.slice(0, 7); months.set(k, [...(months.get(k) || []), it]); }
   return (
     <div className="mt-2">
+      {grid}
+      <h2 className="mt-6 px-1 text-[13px] font-semibold uppercase tracking-wide text-[var(--muted)]">Upcoming</h2>
       {[...months.entries()].map(([m, list]) => (
         <section key={m} className="mt-5">
           <h2 className="px-1 pb-2 font-serif text-lg font-semibold">{day(m + "-01", { month: "long", year: "numeric" })}</h2>
@@ -45,7 +52,7 @@ async function Cal() {
 export default function Calendar() {
   return (
     <>
-      <PageTitle title="Calendar" sub="Booked shoots · dashed = date held for an open inquiry" />{/* leak-check: allow: the app word "inquiry", not client data */}
+      <PageTitle title="Calendar" sub="Tap a day to see what’s on it" />{/* leak-check: allow: the app word "inquiry", not client data */}
       <Suspense fallback={<Skeleton rows={6} />}><Cal /></Suspense>
     </>
   );

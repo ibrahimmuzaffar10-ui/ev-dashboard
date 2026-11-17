@@ -50,6 +50,9 @@ MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "No
 def pretty(dt):
     try: y, m, dd = map(int, str(dt)[:10].split("-")); return f"{MON[m-1]} {dd}, {y}"
     except Exception: return str(dt or "")
+def fmt_money(v):
+    return f"${float(v):,.2f}".replace(".00", "")
+
 def money(v):
     try: v = float(v); return f"${v:,.0f}" if v == int(v) else f"${v:,.2f}"
     except Exception: return str(v or "")
@@ -327,6 +330,8 @@ class H(BaseHTTPRequestHandler):
             if self.path == "/api/push-test":                  # phone app "Send a test notification": the Mac sends it
                 if db.CLOUD: db.doc_write("push_test_request", {"at": evtime.now_ct().isoformat(timespec="seconds")})
                 return self._send(200, json.dumps({"ok": True}))
+            if self.path == "/api/payment-apply":            # Ibrahim 11/17: credit a Zelle (any sender) to a booking's payments
+                return self._payment_apply(body)
             if self.path == "/api/payment-match":            # match an unmatched payment to a lead (or undo); own lock, one row
                 lid = body.get("lead_id") or None
                 lead = next((l for l in load()["leads"] if l.get("id") == lid), None) if lid else None
@@ -583,6 +588,50 @@ class H(BaseHTTPRequestHandler):
             self._send(400, str(e), "text/plain")
         except Exception as e:
             self._send(500, f"error: {e}", "text/plain")
+
+    def _payment_apply(self, body):
+        """Credit one unmatched payment to a lead: oldest unpaid installments first (fully paid -> marked paid; a smaller
+        amount splits the installment into 'received' + the rest still due; anything beyond the plan becomes a
+        'Payment received' line), lead.paid / balance / retainer updated, then the payment is linked to the lead.
+        Idempotent: every line it touches carries payment_id, so the same payment can never be applied twice."""
+        eid = str(body.get("email_id") or "")
+        pay = next((x for x in db.payments_all() if str(x.get("email_id")) == eid), None)
+        if not pay: return self._send(404, "payment not found", "text/plain")
+        if pay.get("lead_id"): return self._send(409, "this payment is already matched", "text/plain")
+        amt = float(pay.get("amount") or 0)
+        if amt <= 0: return self._send(400, "payment has no amount", "text/plain")
+        on = str(pay.get("date") or today())[:10]
+        due_key = lambda x: x.get("due") or "9999"
+        with db.locked(LOCK):
+            d = load()
+            lead = next((l for l in d["leads"] if l.get("id") == body.get("lead_id")), None)
+            if not lead: return self._send(404, "lead not found", "text/plain")
+            S = lead.setdefault("schedule", [])
+            if any(x.get("payment_id") == eid for x in S): return self._send(409, "this payment was already applied", "text/plain")
+            left, done = round(amt, 2), []
+            for inst in sorted([x for x in S if not x.get("paid")], key=due_key):
+                a = float(inst.get("amount") or 0)
+                if left <= 0.005 or a <= 0: continue
+                if left >= a - 0.005:
+                    inst.update(paid=True, paid_on=on, payment_id=eid); left = round(left - a, 2); done.append(f"{inst.get('label') or 'Payment'} paid")
+                    if "retainer" in str(inst.get("label", "")).lower(): lead["retainer"] = "paid"
+                else:
+                    inst["amount"] = round(a - left, 2)
+                    S.append({"label": f"{inst.get('label') or 'Payment'} (part)", "due": inst.get("due") or on, "amount": left, "paid": True, "paid_on": on, "payment_id": eid})
+                    done.append(f"{fmt_money(left)} toward {inst.get('label') or 'the next payment'}"); left = 0
+                    if "retainer" in str(inst.get("label", "")).lower() and lead.get("retainer") != "paid": lead["retainer"] = "partial"
+            if left > 0.005:
+                S.append({"label": "Payment received", "due": on, "amount": left, "paid": True, "paid_on": on, "payment_id": eid}); done.append(f"{fmt_money(left)} recorded as a payment")
+            S.sort(key=due_key)
+            lead["paid"] = round((lead.get("paid") or 0) + amt, 2)
+            total = lead.get("total") or 0
+            if total and lead["paid"] >= total - 0.005: lead["balance"] = "paid_in_full"
+            elif lead.get("balance") in (None, "n/a", "unknown", "due"): lead["balance"] = "partial" if lead["paid"] else lead.get("balance")
+            store(d, {"id": lead["id"], "client": lead["client"], "field": "payment_applied", "old": None, "new": eid})
+            name, paid_now = lead["client"], lead["paid"]
+        db.payment_link(eid, lead["id"], name)
+        left_total = max(0, round(total - paid_now, 2)) if total else None
+        return self._send(200, json.dumps({"applied": done, "left": left_total, "client": name}, ensure_ascii=False))
 
     def log_message(self, *a):
         pass
