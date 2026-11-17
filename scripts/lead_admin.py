@@ -50,8 +50,11 @@ def main():
             return
         if a.name is None or a.name != lead.get("client"):
             sys.exit("refused: --name must be the lead's exact client name")
-        if lead.get("contract") == "signed" or pays:
-            sys.exit("refused: signed contract or payments on this lead (business history); do it by hand with Ibrahim")
+        # payments are not always linked by lead_id (some match by name only), so the lead's own money fields count too
+        money = (lead.get("paid") not in (None, "", 0) or lead.get("retainer") in ("paid", "partial")
+                 or lead.get("balance") in ("paid_in_full", "partial"))
+        if lead.get("contract") == "signed" or pays or money or lead.get("status") in ("booked", "completed"):
+            sys.exit("refused: booked/completed, signed, or money recorded on this lead (business history); do it by hand with Ibrahim")
         if not a.yes:
             print("dry run: nothing changed (add --yes to delete)")
             return

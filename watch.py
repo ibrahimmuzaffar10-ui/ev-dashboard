@@ -129,6 +129,7 @@ def heartbeat(ok):
     try:
         db.doc_write("heartbeat_watch", {"at": evtime.now_ct().isoformat(timespec="seconds"), "ok": ok, "shadow": SHADOW})
     except Exception as ex:
+        ok = False      # database unreachable: no "all good" ping, so healthchecks.io alerts if it lasts
         print("heartbeat not saved:", ex)
     url = os.environ.get("EV_HEALTHCHECK_URL")
     if ok and url and not SHADOW:
