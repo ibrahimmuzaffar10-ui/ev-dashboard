@@ -73,3 +73,26 @@
 !api/index.py
 !vercel.json
 !.vercelignore
+
+# Stage 3: Next.js phone-first app (web/). Source only: never web/.env*, node_modules or .next
+!web/.gitignore
+!web/.vercelignore
+!web/vercel.json
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
+!web/next.config.ts
+!web/next-env.d.ts
+!web/eslint.config.mjs
+!web/postcss.config.mjs
+!web/AGENTS.md
+!web/README.md
+!web/proxy.ts
+!web/app/**/*.tsx
+!web/app/**/*.ts
+!web/app/**/*.css
+!web/app/favicon.ico
+!web/lib/**/*.ts
+web/.env*
+web/node_modules/
+web/.next/

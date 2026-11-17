@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* Same color language as the current dashboard: green = done, yellow = in progress, orange = needs us, red = late */
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1c1c1f; --muted: #6b6b73; --line: #e4e2dc;
+  --green: #1e7b3a; --green-bg: #e3f5e8; --yellow: #8a6500; --yellow-bg: #fff4cc;
+  --orange: #a14a00; --orange-bg: #ffe5cc; --red: #a8231a; --red-bg: #fde0dc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121214; --panel: #1c1c20; --ink: #ececef; --muted: #a0a0aa; --line: #2e2e34;
+    --green: #6fd08c; --green-bg: #173323; --yellow: #f0c75e; --yellow-bg: #3a2f10;
+    --orange: #f3a35c; --orange-bg: #3d2512; --red: #f2877d; --red-bg: #3f1915;
+  }
+}
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }

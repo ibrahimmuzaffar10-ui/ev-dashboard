@@ -29,6 +29,10 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | Path | What |
 |---|---|
 | `docs/ROADMAP.md` | The plan: stages, phases, pass/fail tests, schema notes, decisions, status log |
+| `docs/OPERATIONS.md`, `docs/HOSTING.md` | What to do when the Mac / Vercel / Supabase is down; everything needed to move off Vercel |
+| `scripts/testdb.py` | **Post-cutover tests run ONLY through this**: private local Postgres copy (TLS, same role) from the newest backup: `testdb.py run <cmd>` |
+| `scripts/restore_local.py`, `scripts/lead_admin.py` | Backup → old JSON without Supabase; safe one-lead show/delete |
+| `web/` | Stage 3 Next.js 16 phone-first app (own Vercel project `emanant-hq-web`; read `web/AGENTS.md` first) |
 | `server.py` | Dashboard server (stdlib `ThreadingHTTPServer`; `load()`/`store()` on JSON; 6 GET + 13 POST routes) |
 | `dashboard_template.html`, `calendar.html` | UI (single page; `__BOOT__` and `__PRIVACY_OPTIONS__` placeholders filled by the server) |
 | `watch.py` | iCloud mail watcher (via `himalaya` CLI) → alerts; triggers `zelle_import.py` |

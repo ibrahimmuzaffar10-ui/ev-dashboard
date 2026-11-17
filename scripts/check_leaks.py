@@ -67,6 +67,10 @@ def sensitive_terms():
     return terms, words
 
 
+# The only .json files that may be committed: app config by exact path (never data). Their content is still scanned.
+CONFIG_JSON = {"vercel.json", "web/vercel.json", "web/package.json", "web/package-lock.json", "web/tsconfig.json"}
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "--staged"
     terms, words = sensitive_terms()
@@ -75,7 +79,7 @@ def main():
     for f in files(mode):
         p = os.path.join(ROOT, f)
         if not os.path.isfile(p): continue
-        if f.endswith((".pdf", ".docx", ".xlsx", ".json", ".log")) and f != "vercel.json":  # vercel.json: config, content still scanned
+        if f.endswith((".pdf", ".docx", ".xlsx", ".json", ".log")) and f not in CONFIG_JSON:  # named config files: content still scanned
             print(f"{f}: BLOCKED file type"); hits += 1; continue
         if f == ".env.local" or f.startswith("backups/"):
             print(f"{f}: BLOCKED path"); hits += 1; continue
