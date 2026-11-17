@@ -177,9 +177,11 @@ ENUMS = {
     "review": {"received", "requested", "none"},
     "lost_reason": {"went_with_other", "price", "client_ghosted", "changed_plans", "date_conflict", "date_passed", "travel", "no_reply_us", "service_gap", "other", ""},
     "fault": {"ours", "client", "timing", "unknown"},
+    # Phase 8b: Eman's quick 15-min call after a client sends their date (missing = "none")
+    "call": {"none", "offered", "booked", "done", "declined"},
 }
-TEXT = {"action_note", "notes", "venue", "quote", "client"}
-DATES = {"event", "inquiry", "last_contact"}  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+TEXT = {"action_note", "notes", "venue", "quote", "client", "call_time"}
+DATES = {"event", "inquiry", "last_contact", "call_on"}  # leak-check: allow: the app word "inquiry" (default lead name), not client data
 NUMS = {"total", "paid"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -398,9 +400,14 @@ class H(BaseHTTPRequestHandler):
                     if not al or not al.get("from_email"): return self._send(404, "alert/sender not found", "text/plain")
                     text = str(body.get("body", "")).strip()
                     if len(text) < 20: return self._send(400, "message too short", "text/plain")
+                    if "[Pick one" in text: return self._send(400, "fill in the [Pick one …] part first", "text/plain")
                     subj = str(body.get("subject") or ("Re: " + (al.get("detail") or "Your message")))[:200]
                     mid = send_mail(al["from_email"], subj, text, al.get("email_id"))
                     al["clarify_sent"] = today(); al["awaiting_reply"] = True; al["done"] = True; al["done_at"] = today()
+                    if body.get("call_offer"):           # Phase 8b: the reply offered Eman's quick call
+                        al["call_offered"] = today()
+                        lead = next((l for l in d["leads"] if l.get("id") == al.get("lead_id")), None)
+                        if lead and (lead.get("call") or "none") == "none": lead["call"] = "offered"
                     w = d.setdefault("watch_senders", [])
                     if al["from_email"].lower() not in w: w.append(al["from_email"].lower())
                     store(d, {"id": al["id"], "client": al.get("title", ""), "field": "email_sent", "old": None, "new": subj})

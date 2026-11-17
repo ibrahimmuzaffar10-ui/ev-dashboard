@@ -75,6 +75,19 @@ for l in DATA["leads"]:
         if s.get("paid") or not s.get("due"): continue
         n = (datetime.date.fromisoformat(s["due"]) - today).days
         if n <= 3: due.append(f"- 💳 **{name(l)}** {money(s['amount'])} {s.get('label','')} " + (f"OVERDUE since {fd(s['due'])}" if n < 0 else f"due {fd(s['due'])}"))
+# Phase 8b: Eman's quick 15-min call. Leads with a date and no call yet -> offer one; booked calls today/tomorrow
+calls_offer, calls_soon = [], []
+for l in DATA["leads"]:
+    c = l.get("call") or "none"
+    recent = (l.get("inquiry") or "") >= (today - datetime.timedelta(days=30)).isoformat()  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+    if c == "none" and recent and l["status"] in ("unanswered", "open") and l.get("event") and l["event"] >= today.isoformat():
+        calls_offer.append(l)
+    if c == "booked" and l.get("call_on"):
+        try: n = (datetime.date.fromisoformat(l["call_on"]) - today).days
+        except ValueError: continue
+        if 0 <= n <= 1:
+            calls_soon.append(f"- 📞 **{name(l)}** " + ("today" if n == 0 else "tomorrow") + (f" {l['call_time']}" if l.get("call_time") else ""))
+calls_offer.sort(key=lambda l: l.get("event") or "9999")
 unmatched = [p for p in PAYS if not p.get("lead_id") and p.get("date", "") >= (today - datetime.timedelta(days=14)).isoformat()]
 
 slot = "Morning" if ct.hour < 15 else "Night"
@@ -82,15 +95,19 @@ slot = "Morning" if ct.hour < 15 else "Night"
 out = [f"## Emanant HQ · {slot} brief · {ct:%a %b %-d, %-I:%M %p} CT"]
 out.append(f"**Since last brief:** " + (f"{len(moved)} update(s)" if moved else "no new emails, inquiries or payments"))
 out += moved[:15]
+if calls_soon: out += ["", "**Eman's calls today / tomorrow**"] + calls_soon
 if soon_shoots: out += ["", "**Shoots in the next 3 days**"] + soon_shoots
 if sign_by: out += ["", "**Contract deadlines**"] + sign_by
 if due: out += ["", "**Payments due / overdue**"] + due
 if unans:
     out += ["", f"**Waiting on a reply from us ({len(unans)})**"]
     out += [f"- 🟧 {name(l)}" + (f" · {fd(l['event'])}" if l.get("event") else "") + (f" — {l['action_note']}" if l.get("action_note") else "") for l in unans[:10]]
+if calls_offer:
+    out += ["", f"**Offer a quick 15-min call with Eman ({len(calls_offer)})** — they sent a date; ask what day/time works for them"]
+    out += [f"- 📞 {name(l)} · {fd(l['event'])}" for l in calls_offer[:10]]
 if unmatched:
     out += ["", "**Zelle not matched to a client (last 14 days)**"] + [f"- {money(p['amount'])} from {p['sender']} ({fd(p['date'])})" for p in unmatched]
-out += ["", "_Email + website form + Zelle are scanned automatically. Instagram DMs aren't visible yet: tell Hermes about new IG activity._"]
+out += ["", "_Email + website form + Zelle are scanned automatically. Instagram DMs aren't visible yet: tell Claude about new IG activity._"]
 text = "\n".join(out)
 print(text)
 

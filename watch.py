@@ -26,6 +26,13 @@ OWN = evenv.need("EV_ICLOUD_LOGIN")
 OWN_ADDRESSES = {OWN, *evenv.as_list("EV_BUSINESS_ADDRESSES")}  # mail from these is ours, never a lead
 STRICT = re.compile(r"\b(wedding|nikkah|nikah|walima|valima|mehndi|mehendi|shaadi|baraat|photographer|photography|photo ?shoot|engagement (shoot|session|photos)|your (rates|pricing|packages)|quote)\b", re.I)
 
+# Phase 8b: a client message that names a date -> the alert suggests Eman's quick call (second line, so the brief's
+# one-line summary stays the same)
+DATE_HINT = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2}(st|nd|rd|th)?\b|\b\d{1,2}(st|nd|rd|th)? (of )?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\b\d{1,2}/\d{1,2}(/\d{2,4})?\b|\b20\d\d-\d{2}-\d{2}\b", re.I)
+CALL_TIP = "\n📞 They mention a date: offer a quick 15-min call with Eman (ask what day/time works for them)."
+def call_tip(*texts):
+    return CALL_TIP if any(DATE_HINT.search(x or "") for x in texts) else ""
+
 def hj(*args):
     r = subprocess.run(["himalaya", "--json", *args], capture_output=True, text=True, timeout=240)
     if r.returncode != 0: raise RuntimeError(r.stderr[-300:])
@@ -302,7 +309,7 @@ def main():
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default); t = text_of(m)
             rt = getaddresses([m.get("Reply-To", "")]); cem = (rt[0][1] if rt else field(t, "email")).lower()
             cname = field(t, "name") or cem; svc = field(t, "service"); msg = field(t, "message")
-            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:600], "email_id": key, "from_email": cem, "at": when,  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:600] + call_tip(svc, msg), "email_id": key, "from_email": cem, "at": when,  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                     "create_lead": {"client": cname, "channel": "Website form", "src_email": cem, "notes": f"{svc}: {msg}"[:900], "event_text": ""}}
             post("/api/alert-new", body); notify("New website inquiry", f"{cname}: {svc}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         elif "chase.com" in frm and "received money" in subj.lower():
@@ -318,7 +325,7 @@ def main():
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default); t = text_of(m)
             fresh = re.split(r"\sOn .{5,80} wrote:", t)[0][:2000]
             if STRICT.search(subj + " " + fresh) or INQ.search(fresh):
-                post("/api/alert-new", {"type": "possible_inquiry", "title": f"Replied with details: {name}", "detail": fresh[:500], "email_id": key, "from_email": frm, "at": when})
+                post("/api/alert-new", {"type": "possible_inquiry", "title": f"Replied with details: {name}", "detail": fresh[:500] + call_tip(subj, fresh), "email_id": key, "from_email": frm, "at": when})
                 notify("Inquiry details received", f"{name}: {fresh[:80]}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             else:
                 post("/api/alert-new", {"type": "email", "title": f"Reply not about photography: {name}", "detail": "Auto-ignored. Reopen if this is wrong. " + fresh[:400], "email_id": key, "from_email": frm, "at": when, "done": True})
@@ -338,10 +345,10 @@ def main():
                 vague = re.search(r"\b(free|available|availability|book|booking|rates?|prices?|cost|how much|quote|interested|hire|services?)\b", subj + " " + t[:800], re.I) or \
                         re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2}/\d{1,2}\b", t[:800], re.I)
                 if not vague or len(t) > 2500 or history(frm) > 1: return "skipped"
-                post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:400]).strip(" —"), "email_id": key, "from_email": frm, "at": when})
+                post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:400]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})
                 notify("Unclear message", f"{name}: {subj or t[:60]}")
                 return "alert"
-            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": subj, "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": subj + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             notify("Possible inquiry", f"{name}: {subj}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         else:
             return "skipped"   # newsletter / noise / blocked sender

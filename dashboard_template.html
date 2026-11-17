@@ -221,6 +221,7 @@ const OPT = {
     ['date_conflict','Date conflict (already booked)','n'],['date_passed','Event date passed','n'],['travel','Eman traveling that date','n'],['no_reply_us','We replied too late / not at all','n'],
     ['service_gap','Wanted something we don\'t offer (e.g. video)','n'],['other','Other','n'],['','— pick a reason —','n']],
   fault:    [['ours','Our side','o'],['client','Client side','y'],['timing','No fault · bad timing','n'],['unknown','Not sure','n']],
+  call:     [['none','Not offered','o'],['offered','Offered','y'],['booked','Booked','g'],['done','Done','g'],['declined','Declined','n']],  // Phase 8b: Eman's quick 15-min call
 };
 const FAULT_OF={went_with_other:'client',price:'client',client_ghosted:'client',changed_plans:'client',date_conflict:'timing',date_passed:'timing',travel:'ours',no_reply_us:'ours',service_gap:'ours',other:'unknown'};
 const SERVICES=['wedding','multi_day_wedding','nikkah','walima','mehndi','engagement_couples','family','graduation','maternity','event_other','unknown'];
@@ -284,23 +285,23 @@ function kpis(){
 }
 const TABS={
   alerts:{label:'Alerts',alerts:true},
-  action:{label:'Action needed',rows:L=>L.filter(needs),cols:['status','client','event','next','replied','contract','retainer','nextpay'],sort:'pri'},
+  action:{label:'Action needed',rows:L=>L.filter(needs),cols:['status','client','event','next','call','callon','replied','contract','retainer','nextpay'],sort:'pri'},
   upcoming:{label:'Upcoming',rows:L=>L.filter(r=>r.event&&r.event>=TODAY&&['booked','open'].includes(r.status)),cols:['event','client','status','service','contract','retainer','nextpay','next'],sort:'event'},
   bookings:{label:'Bookings',rows:L=>L.filter(r=>['booked','completed'].includes(r.status)),cols:['event','client','status','contract','retainer','balance','nextpay','total','paid','gallery','review','next'],sort:'eventdesc'},
-  all:{label:'All leads',rows:L=>L,cols:['inquiry','client','status','replied','event','service','contract','retainer','balance','gallery','lost_reason','next','notes'],sort:'inquiry'},  // leak-check: allow: the app word "inquiry" (default lead name), not client data
+  all:{label:'All leads',rows:L=>L,cols:['inquiry','client','status','replied','event','service','call','callon','contract','retainer','balance','gallery','lost_reason','next','notes'],sort:'inquiry'},  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   lost:{label:'Lost',rows:L=>L.filter(r=>['lost','ghosted'].includes(r.status)),cols:['inquiry','client','status','event','service','lost_reason','fault','notes'],sort:'inquiry',fault:true},  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   vendors:{label:'Vendors'},
   fin:{label:'Booking financials',view:'fin',rows:L=>L.filter(isWon),cols:['event','client','status','total','paid','balamt','nextpay','plan','retainer','balance'],sort:'eventdesc'},
   dues:{label:'Upcoming payments',view:'fin',dues:true},
   payments:{label:'Payments received',view:'fin',pay:true}
 };
-const HEAD={status:'Status',client:'Client',event:'Event date',next:'Next step',replied:'Replied',contract:'Contract',retainer:'Retainer',balance:'Balance',gallery:'Gallery',review:'Review',service:'Service',inquiry:'Inquiry',quote:'Quoted',notes:'Notes',total:'Total',paid:'Paid',nextpay:'Next payment',lost_reason:'Lost reason',fault:'Whose side',balamt:'Balance left',plan:'Payment plan'};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
+const HEAD={status:'Status',client:'Client',event:'Event date',next:'Next step',replied:'Replied',contract:'Contract',retainer:'Retainer',balance:'Balance',gallery:'Gallery',review:'Review',service:'Service',inquiry:'Inquiry',quote:'Quoted',notes:'Notes',total:'Total',paid:'Paid',nextpay:'Next payment',lost_reason:'Lost reason',call:'15-min call',callon:'Call date',fault:'Whose side',balamt:'Balance left',plan:'Payment plan'};  // leak-check: allow: the app word "inquiry" (default lead name), not client data
 const PRI={unanswered:0,open:1,booked:2,lost:3,completed:4};
 
 function cell(k,r){
   if((k==='lost_reason'||k==='fault')&&!['lost','ghosted'].includes(r.status)) return '<span class="muted">—</span>';
   if(OPT[k]){
-    let v=r[k]??(k==='fault'?'unknown':''), c=col(k,v), l=lab(k,v);
+    let v=r[k]??(k==='fault'?'unknown':k==='call'?'none':''), c=col(k,v), l=lab(k,v);
     if(k==='balance'&&overdue(r)){c='r';l='Overdue'}
     if(!LIVE) return `<span class="pill ${c}">${l}</span>`;
     return `<select class="pill ${c}" data-id="${r.id}" data-f="${k}">${OPT[k].map(o=>`<option value="${o[0]}"${o[0]===v?' selected':''}>${k==='balance'&&o[0]==='due'&&overdue(r)?'Overdue':o[1]}</option>`).join('')}</select>`;
@@ -317,6 +318,8 @@ function cell(k,r){
     case 'balamt': { const b=balAmt(r); if(b==null) return '<span class="muted">—</span>'; return `<span class="pill ${b===0?'g':overdue(r)?'r':'y'}">${money(b)}</span>`; }
     case 'plan': { const S=r.schedule||[]; const items=S.map((x,i)=>`<div class="inst ${x.paid?'done':(x.due&&x.due<TODAY?'late':'')}" data-id="${r.id}" data-i="${i}" title="Click to edit">${money(x.amount)}${x.due?' · '+fmt(x.due):''} <span class="muted">${esc(x.label)}</span></div>`).join('');
       return `<div class="plan">${items||'<span class="muted">No plan</span>'}${LIVE?`<button class="linkbtn addinst" data-id="${r.id}">+ add payment</button>`:''}</div>`; }
+    case 'callon': { const c=r.call||'none'; if(!['offered','booked','done'].includes(c)&&!r.call_on) return '<span class="muted">—</span>';
+      return LIVE?`<input class="inline date${r.call_on?'':' blank'}" type="date" value="${r.call_on||''}" data-id="${r.id}" data-f="call_on"><input class="inline" style="width:6.5em" placeholder="time" value="${esc(r.call_time||'')}" data-id="${r.id}" data-f="call_time">`:(r.call_on?fmt(r.call_on)+(r.call_time?' '+esc(r.call_time):''):'<span class="muted">—</span>'); }
     case 'inquiry': return fmt(r.inquiry);  // leak-check: allow: the app word "inquiry" (default lead name), not client data
     case 'service': return svc(r.service);
     case 'total': case 'paid': return LIVE?`<input class="inline money" inputmode="decimal" value="${r[k]??''}" placeholder="—" data-id="${r.id}" data-f="${k}">`:money(r[k]);
@@ -343,7 +346,7 @@ function render(){
     tbl.innerHTML='<thead><tr><th>When</th><th>Type</th><th>What</th><th>Details</th><th></th></tr></thead><tbody>'+
      (A.length?A.map(a=>{const [tl,tc]=TY[a.type]||['Alert','n'];const lead=a.lead_id&&DATA.leads.find(l=>l.id===a.lead_id);
        return `<tr class="${a.done?'done':''}"><td>${esc(String(a.at).replace('T',' '))}</td><td><span class="pill ${tc} atype">${tl}</span></td><td class="client">${esc(a.title)}${a.count>1?` <span class="pill y" style="font-size:10.5px;padding:1px 7px">${a.count} messages</span>`:''} ${a.unread&&!a.done?'<span class="pill o" style="font-size:10.5px;padding:1px 7px">Unread</span>':''}<small>${esc(a.from_email||'')}${a.clarify_sent?' · asked for details '+fmt(a.clarify_sent)+', waiting for reply':''}</small></td><td class="wrap" style="white-space:pre-line">${esc(a.detail)}</td>
-       <td>${LIVE?(a.done?`${a.ignored?'<span class="muted">Ignored · </span>':''}<button class="linkbtn al" data-a="${a.id}" data-x="undo">Reopen</button>`:`${(a.type==='possible_inquiry'||a.type==='unclear')&&!lead?`<button class="linkbtn al" data-a="${a.id}" data-x="ask">✉️ Ask what it's about</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="lead">✓ It's a lead · add</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="ignore" style="color:#a8231a">✗ Not a lead · ignore sender</button> &nbsp;`:''}${lead?`<button class="linkbtn al" data-a="${a.id}" data-x="open">Open lead</button> &nbsp;`:''}<button class="btn al" data-a="${a.id}" data-x="done">✓ Handled</button>`):''}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">No open alerts 🎉 New emails show up here within 5 minutes.</td></tr>')+'</tbody>';
+       <td>${LIVE?(a.done?`${a.ignored?'<span class="muted">Ignored · </span>':''}<button class="linkbtn al" data-a="${a.id}" data-x="undo">Reopen</button>`:`${a.from_email&&(a.detail||'').includes('📞 They mention a date')?`<button class="linkbtn al" data-a="${a.id}" data-x="call">📞 Offer a call</button> &nbsp;`:''}${(a.type==='possible_inquiry'||a.type==='unclear')&&!lead?`<button class="linkbtn al" data-a="${a.id}" data-x="ask">✉️ Ask what it's about</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="lead">✓ It's a lead · add</button> &nbsp;<button class="linkbtn al" data-a="${a.id}" data-x="ignore" style="color:#a8231a">✗ Not a lead · ignore sender</button> &nbsp;`:''}${lead?`<button class="linkbtn al" data-a="${a.id}" data-x="open">Open lead</button> &nbsp;`:''}<button class="btn al" data-a="${a.id}" data-x="done">✓ Handled</button>`):''}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">No open alerts 🎉 New emails show up here within 5 minutes.</td></tr>')+'</tbody>';
     document.getElementById('count').textContent=A.length+' alerts'; return;
   }
   if(T.dues){
@@ -415,17 +418,23 @@ let alertForLead=null;
 document.getElementById('t').addEventListener('click',async e=>{const b=e.target.closest('.al');if(!b)return;const a=DATA.alerts.find(x=>x.id===b.dataset.a);
   try{ if(b.dataset.x==='done'){await alertAct(a.id,'done');toast('Marked handled ✓')}
    else if(b.dataset.x==='undo'){await alertAct(a.id,'undo')}
-   else if(b.dataset.x==='ask'){mailFor=a;const first=(a.title.split(': ').pop()||'').replace(/ \(in Junk!\)/,'').split(/[ @]/)[0];
+   else if(b.dataset.x==='ask'){mailFor=a;document.querySelector('#mailDlg h3').textContent="Ask what it's about";const first=(a.title.split(': ').pop()||'').replace(/ \(in Junk!\)/,'').split(/[ @]/)[0];
      MF.elements.to.value=a.from_email;MF.elements.subject.value='Re: '+((a.detail||'').split(' — ')[0]||'Your message').slice(0,120);
      MF.elements.body.value=`Hi ${first&&!/^[a-z0-9._%+-]+$/.test(first)?first:'there'},\n\nThank you so much for reaching out! I'd love to help. Could you share a little more about what you're looking for, such as the type of event or session (wedding, nikkah, engagement, family, etc.), the date and location, and roughly how many hours of coverage you have in mind?\n\nOnce I know a bit more, I'll send over my availability and the right details for you.\n\nWarmly,\nEman\nEmanant Visuals · emanantvisuals.com · @emanantvisuals`;mailDlg.showModal()}
+   else if(b.dataset.x==='call'){mailFor=a;mailFor.callOffer=true;const first=(a.title.split(': ').pop()||'').replace(/ \(in Junk!\)/,'').split(/[ @]/)[0];
+     document.querySelector('#mailDlg h3').textContent='Offer a quick 15-min call';
+     MF.elements.to.value=a.from_email;MF.elements.subject.value='Re: '+((a.detail||'').split(' — ')[0].split('\n')[0]||'Your message').slice(0,120);
+     MF.elements.body.value=`Hi ${first&&!/^[a-z0-9._%+-]+$/.test(first)?first:'there'},\n\nThank you so much for reaching out, and congratulations! [Pick one: Great news, that date works for us! / Unfortunately that date doesn't work for us, but I'd still love to help.]\n\nI'd be more than happy to hop on a quick 15-minute call to hear more about what you have in mind and make sure we can cover everything you need. Just let me know a day and time that works best for you.\n\nLooking forward to chatting!\nEman`;
+     mailDlg.showModal()}
    else if(b.dataset.x==='ignore'){await alertAct(a.id,'ignore');toast('Ignored · future emails from '+(a.from_email||'this sender').split('@').pop()+' won\'t alert')}
    else if(b.dataset.x==='open'){const l=DATA.leads.find(x=>x.id===a.lead_id);tab='all';document.getElementById('q').value=l?l.client:'';render()}
    else if(b.dataset.x==='lead'){alertForLead=a;F.reset();F.elements.client.value=a.title.replace(/^Possible inquiry: /,'');F.elements.inquiry.value=TODAY;F.elements.notes.value=a.detail+(a.from_email?' ('+a.from_email+')':'');F.elements.channel.value='Email';dlg.showModal()} }  // leak-check: allow: the app word "inquiry" (default lead name), not client data
   catch(err){toast('Not saved: '+err.message,true)}});
 const mailDlg=document.getElementById('mailDlg'), MF=document.getElementById('mailForm'); let mailFor=null;
 mailDlg.addEventListener('close',async()=>{if(mailDlg.returnValue!=='ok'||!mailFor)return;
-  try{const res=await fetch('/api/send-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:mailFor.id,subject:MF.elements.subject.value,body:MF.elements.body.value})});
-    if(!res.ok)throw new Error(await res.text());Object.assign(DATA.alerts.find(x=>x.id===mailFor.id),(await res.json()).alert);toast('Email sent ✓ · watching for their reply');render()}catch(err){toast('Not sent: '+err.message,true)}});
+  if(MF.elements.body.value.includes('[Pick one')){toast('Pick one of the [ ] options first, then send',true);mailDlg.showModal();return}
+  try{const res=await fetch('/api/send-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:mailFor.id,subject:MF.elements.subject.value,body:MF.elements.body.value,call_offer:!!mailFor.callOffer})});
+    if(!res.ok)throw new Error(await res.text());Object.assign(DATA.alerts.find(x=>x.id===mailFor.id),(await res.json()).alert);if(mailFor.callOffer&&mailFor.lead_id){const l=DATA.leads.find(x=>x.id===mailFor.lead_id);if(l&&(l.call||'none')==='none')l.call='offered'}toast('Email sent ✓ · watching for their reply');render()}catch(err){toast('Not sent: '+err.message,true)}});
 const ctDlg=document.getElementById('ctDlg'), CT=document.getElementById('ctForm'); let ctFor=null;
 const dayRow=(x={})=>`<tr><td><input data-k="event" value="${esc(x.event||'')}" placeholder="Nikkah"></td><td><input type="date" data-k="date" value="${x.date||''}"></td><td><input data-k="start" value="${esc(x.start||'')}" placeholder="2:00 PM"></td><td><input data-k="end" value="${esc(x.end||'')}" placeholder="10:00 PM"></td><td><input data-k="hours" value="${esc(x.hours||'')}" style="width:60px"></td></tr>`;
 const planRow=(x={})=>`<tr><td><input data-k="label" value="${esc(x.label||'')}" placeholder="50% of balance"></td><td><input data-k="amount" value="${x.amount??''}" inputmode="decimal"></td><td><input type="date" data-k="due" value="${x.due||''}"></td></tr>`;
