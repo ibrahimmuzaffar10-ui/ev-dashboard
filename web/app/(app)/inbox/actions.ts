@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { oldApi } from "@/lib/bridge";
+import { oldApi, oldGet } from "@/lib/bridge";
 
 export type Result = { ok: boolean; msg: string };
 const fail = (e: unknown): Result => ({ ok: false, msg: e instanceof Error ? e.message : "Something went wrong" });
@@ -30,4 +30,21 @@ export async function sendReply(id: string, subject: string, body: string, callO
     revalidatePath("/inbox");
     return { ok: true, msg: "Sent · it goes out from Eman's email within a minute (when the Mac is on)" };
   } catch (e) { return fail(e); }
+}
+
+export async function checkNow(): Promise<{ ok: boolean; requested?: string; msg?: string }> {
+  try { const r = await oldApi<{ requested: string }>("/api/check-now", {}); return { ok: true, requested: r.requested }; } catch (e) { return { ok: false, msg: fail(e).msg }; }
+}
+
+export async function lastCheck(): Promise<string | null> {
+  const d = await oldGet<{ watcher_at?: string }>("/api/outbox");
+  return d?.watcher_at || null;
+}
+
+export async function outboxAction(id: number, action: "cancel" | "retry"): Promise<Result> {
+  try { await oldApi("/api/outbox-action", { id, action }); revalidatePath("/inbox"); return { ok: true, msg: action === "retry" ? "Queued to send" : "Cancelled" }; } catch (e) { return fail(e); }
+}
+
+export async function reopen(id: string): Promise<Result> {
+  try { await oldApi("/api/alert", { id, action: "undo" }); revalidatePath("/inbox"); return { ok: true, msg: "Reopened" }; } catch (e) { return fail(e); }
 }

@@ -68,7 +68,7 @@ async function List({ searchParams }: { searchParams: Promise<{ f?: string; q?: 
 export default function Leads(props: PageProps<"/leads">) {
   return (
     <>
-      <PageTitle title="Leads" />
+      <PageTitle title="Leads" right={<Link href="/leads/new" className="btn btn-primary !min-h-9 !py-1.5">+ Add</Link>} />
       <Suspense fallback={<Skeleton rows={6} />}><List searchParams={props.searchParams as Promise<{ f?: string; q?: string }>} /></Suspense>
     </>
   );

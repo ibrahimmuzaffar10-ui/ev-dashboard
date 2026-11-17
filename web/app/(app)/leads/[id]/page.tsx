@@ -5,14 +5,10 @@ import { loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Pill, Section, StatusPill, day, daysFrom, money } from "@/components/ui";
 import { serviceLabel } from "@/components/ui";
 import { Skeleton } from "@/components/page-title";
+import { Editor } from "./editor";
+import { PayButton } from "./pay-button";
 
-const CONTRACT: Record<string, [string, string]> = { signed: ["Signed", "green"], sent: ["Sent", "amber"], not_sent: ["Not sent", "grey"], unknown: ["Unknown", "grey"], "n/a": ["—", "grey"] };
-const PAY: Record<string, [string, string]> = { paid: ["Paid", "green"], paid_in_full: ["Paid in full", "green"], partial: ["Partly paid", "amber"], unpaid: ["Unpaid", "red"], due: ["Due", "amber"], unknown: ["Unknown", "grey"], "n/a": ["—", "grey"] };
-const CALL: Record<string, [string, string]> = { none: ["Not offered", "grey"], offered: ["Offered", "amber"], booked: ["Booked", "green"], done: ["Done", "green"], declined: ["Declined", "grey"] };
 
-function Row({ k, children }: { k: string; children: React.ReactNode }) {
-  return <div className="flex items-center justify-between gap-3 px-4 py-3"><span className="text-[var(--muted)]">{k}</span><span className="text-right">{children}</span></div>;
-}
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,7 +18,6 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   if (!l) notFound();
   const plan = inst.filter((i) => i.leadId === id);
   const got = pays.filter((p) => p.leadId === id);
-  const tag = (m: Record<string, [string, string]>, v: string | null) => { const [t, tone] = m[v || "n/a"] || [v || "—", "grey"]; return <Pill tone={tone}>{t}</Pill>; };
   return (
     <>
       <div className="pt-3"><Link href="/leads" className="text-sm font-medium text-[var(--accent)]">‹ Leads</Link></div>
@@ -48,15 +43,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </Section>
 
-      <Section title="Booking">
-        <div className="card divide-y divide-[var(--line)] text-[15px]">
-          <Row k="15-min call">{tag(CALL, l.call)}{l.callOn && <span className="ml-2 text-sm">{day(l.callOn)} {l.callTime || ""}</span>}</Row>
-          <Row k="Contract">{tag(CONTRACT, l.contract)}</Row>
-          <Row k="Retainer">{tag(PAY, l.retainer)}</Row>
-          <Row k="Balance">{tag(PAY, l.balance)}</Row>
-          <Row k="Total">{money(l.total)}</Row>
-        </div>
-      </Section>
+      <Section title="Details"><Editor lead={l} /></Section>
 
       {(plan.length > 0 || got.length > 0) && (
         <Section title="Payments">
@@ -64,7 +51,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
             {plan.map((i, k) => (
               <li key={"i" + k} className="flex items-center justify-between px-4 py-3">
                 <div><div className="font-medium">{i.label || "Installment"}</div><div className="text-sm text-[var(--muted)]">{i.paid ? `Paid ${day(i.paidOn)}` : i.due ? `Due ${day(i.due)}` : "No date"}</div></div>
-                <div className="text-right"><div className="font-semibold tabular-nums">{money(i.amount)}</div>{!i.paid && i.due && daysFrom(today, i.due) < 0 ? <Pill tone="red">Overdue</Pill> : i.paid ? <Pill tone="green">Paid</Pill> : null}</div>
+                <div className="flex flex-col items-end gap-1 text-right"><div className="font-semibold tabular-nums">{money(i.amount)}</div>{i.paid ? <Pill tone="green">Paid</Pill> : <>{i.due && daysFrom(today, i.due) < 0 && <Pill tone="red">Overdue</Pill>}<PayButton id={l.id} index={i.index} label={i.label || "installment"} /></>}</div>
               </li>
             ))}
             {got.map((p, k) => (
@@ -77,15 +64,8 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </Section>
       )}
 
-      {(l.notes || l.email) && (
-        <Section title="Notes">
-          <div className="card space-y-2 p-4 text-[15px]">
-            {l.email && <a href={`mailto:${l.email}`} className="block text-[var(--accent)]">{l.email}</a>}
-            {l.notes && <p className="whitespace-pre-line leading-snug">{l.notes}</p>}
-          </div>
-        </Section>
-      )}
-      <p className="mt-6 text-center text-xs text-[var(--muted)]">Editing a lead from the phone comes next. For now: <a className="underline" href="https://ev-dashboard-tan.vercel.app">full dashboard</a>.</p>
+      {l.email && <p className="mt-4 text-center text-[15px]"><a href={`mailto:${l.email}`} className="text-[var(--accent)]">{l.email}</a></p>}
+      <p className="mt-4 text-center text-xs text-[var(--muted)]">Contracts are still created in the <a className="underline" href="https://ev-dashboard-tan.vercel.app">full dashboard</a>.</p>
     </>
   );
 }

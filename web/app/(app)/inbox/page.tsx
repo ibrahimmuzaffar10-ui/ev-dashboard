@@ -4,6 +4,9 @@ import { extractFacts } from "@/lib/facts";
 import { Empty } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
 import { AlertCard, type CardData } from "./alert-card";
+import { MacStatus, type Health, type OutRow } from "./mac-status";
+import { oldGet } from "@/lib/bridge";
+import Link from "next/link";
 
 const KIND: Record<string, [string, string]> = {
   new_inquiry: ["Website form", "amber"], possible_inquiry: ["Possible inquiry", "amber"], unclear: ["Unclear message", "grey"],  // leak-check: allow: the app word "inquiry", not client data
@@ -38,11 +41,18 @@ async function List() {
   return <div className="mt-4 space-y-3">{cards.map((c) => <AlertCard key={c.id} a={c} />)}</div>;
 }
 
+async function Status() {
+  const [health, out] = await Promise.all([oldGet<Health>("/api/health"), oldGet<{ rows: OutRow[] }>("/api/outbox")]);
+  return <MacStatus health={health} rows={out?.rows || []} />;
+}
+
 export default function Inbox() {
   return (
     <>
       <PageTitle title="Inbox" sub="Inquiries, client replies and payments" />{/* leak-check: allow: the app word "inquiry", not client data */}
+      <Suspense fallback={null}><Status /></Suspense>
       <Suspense fallback={<Skeleton />}><List /></Suspense>
+      <p className="mt-6 text-center text-sm"><Link href="/inbox/handled" className="text-[var(--accent)]">Recently handled</Link></p>
     </>
   );
 }

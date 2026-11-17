@@ -5,6 +5,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { Empty, Pill, Section, day, daysFrom, money } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
 import { logout } from "../login/actions";
+import { oldGet } from "@/lib/bridge";
+import { Brief } from "@/components/brief";
 
 function Attn({ href, n, label, tone }: { href: string; n: number; label: string; tone: string }) {
   return (
@@ -15,6 +17,11 @@ function Attn({ href, n, label, tone }: { href: string; n: number; label: string
       <span className="text-[var(--muted)]">›</span>
     </Link>
   );
+}
+
+async function BriefCard() {
+  const r = await oldGet<{ brief: { id: string; slot: string; text: string; at: string } | null; acked: boolean }>("/api/brief");
+  return r?.brief ? <Brief brief={r.brief} acked={r.acked} /> : null;
 }
 
 async function Today() {
@@ -35,6 +42,7 @@ async function Today() {
   return (
     <>
       <PageTitle title={hello} sub={day(today, { weekday: "long", month: "long", day: "numeric" })} />
+      <Suspense fallback={null}><BriefCard /></Suspense>
       <div className="mt-4 space-y-2.5">
         {alerts.length > 0 && <Attn href="/inbox" n={alerts.length} label={alerts.length === 1 ? "new message to look at" : "new messages to look at"} tone="red" />}
         {needsReply > 0 && <Attn href="/leads?f=reply" n={needsReply} label={needsReply === 1 ? "lead waiting on our reply" : "leads waiting on our reply"} tone="amber" />}

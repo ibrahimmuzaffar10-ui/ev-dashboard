@@ -8,14 +8,15 @@ export type Lead = {
   id: string; client: string; email: string | null; status: string; service: string | null; channel: string | null;
   inquiry: string | null; lastContact: string | null; eventText: string | null; venue: string | null;  // leak-check: allow: the app word "inquiry", not client data
   contract: string | null; retainer: string | null; balance: string | null; total: number | null; paid: number | null;
-  notes: string | null; next: string | null; call: string; callOn: string | null; callTime: string | null;
+  notes: string | null; next: string | null; replied: string | null; gallery: string | null; review: string | null;
+  lostReason: string | null; fault: string | null; call: string; callOn: string | null; callTime: string | null;
   days: { label: string | null; day: string | null; start: string | null; end: string | null; venue: string | null }[];
 };
 export type Alert = {
   id: string; at: string | null; type: string; title: string; detail: string; fromEmail: string | null;
   leadId: string | null; done: boolean; unread: boolean; count: number;
 };
-export type Installment = { leadId: string; label: string | null; due: string | null; amount: number; paid: boolean; paidOn: string | null };
+export type Installment = { leadId: string; index: number; label: string | null; due: string | null; amount: number; paid: boolean; paidOn: string | null };
 export type Payment = { on: string | null; amount: number; sender: string | null; leadId: string | null; label: string | null; method: string | null };
 
 // Houston "today"; waits for the request first (Next.js must not freeze the clock into a prerender)
@@ -32,7 +33,7 @@ export async function loadLeads(): Promise<{ leads: Lead[]; error?: string }> {
   await connection();
   const sb = await supabaseServer();
   const [l, c, d] = await Promise.all([
-    sb.from("leads").select("lead_id, client_id, status, service, channel, inquiry_on, last_contact_on, event_text, venue, contract_status, retainer_status, balance_status, total, paid_manual, notes, action_note, legacy_shape"),  // leak-check: allow: the app word "inquiry", not client data
+    sb.from("leads").select("lead_id, client_id, status, replied, gallery, review, lost_reason, fault, service, channel, inquiry_on, last_contact_on, event_text, venue, contract_status, retainer_status, balance_status, total, paid_manual, notes, action_note, legacy_shape"),  // leak-check: allow: the app word "inquiry", not client data
     sb.from("clients").select("client_id, name, email"),
     sb.from("event_days").select("lead_id, position, label, day, start_local, end_local, venue").order("position"),
   ]);
@@ -52,7 +53,7 @@ export async function loadLeads(): Promise<{ leads: Lead[]; error?: string }> {
       status: x.status, service: x.service, channel: x.channel, inquiry: x.inquiry_on, lastContact: x.last_contact_on,  // leak-check: allow: the app word "inquiry", not client data
       eventText: x.event_text, venue: x.venue, contract: x.contract_status, retainer: x.retainer_status, balance: x.balance_status,
       total: x.total === null ? null : Number(x.total), paid: x.paid_manual === null ? null : Number(x.paid_manual),
-      notes: x.notes, next: x.action_note, call: extra(shape, "call") || "none", callOn: extra(shape, "call_on"), callTime: extra(shape, "call_time"),
+      notes: x.notes, next: x.action_note, replied: x.replied, gallery: x.gallery, review: x.review, lostReason: x.lost_reason, fault: x.fault, call: extra(shape, "call") || "none", callOn: extra(shape, "call_on"), callTime: extra(shape, "call_time"),
       days: days.get(x.lead_id) || [],
     } satisfies Lead;
   });
@@ -76,12 +77,12 @@ export async function loadMoney(): Promise<{ inst: Installment[]; pays: Payment[
   await connection();
   const sb = await supabaseServer();
   const [i, p] = await Promise.all([
-    sb.from("installments").select("lead_id, label, due_on, amount, paid, paid_on").order("due_on"),
+    sb.from("installments").select("lead_id, position, label, due_on, amount, paid, paid_on").order("due_on"),
     sb.from("payments").select("received_on, amount, sender, lead_id, client_label, method").order("received_on", { ascending: false }),
   ]);
   const error = i.error?.message || p.error?.message;
   return {
-    inst: (i.data || []).map((x) => ({ leadId: x.lead_id, label: x.label, due: x.due_on, amount: Number(x.amount || 0), paid: !!x.paid, paidOn: x.paid_on })),
+    inst: (i.data || []).map((x) => ({ leadId: x.lead_id, index: x.position, label: x.label, due: x.due_on, amount: Number(x.amount || 0), paid: !!x.paid, paidOn: x.paid_on })),
     pays: (p.data || []).map((x) => ({ on: x.received_on, amount: Number(x.amount || 0), sender: x.sender, leadId: x.lead_id, label: x.client_label, method: x.method })),
     error,
   };
@@ -93,4 +94,13 @@ export async function loadVendors() {
   const sb = await supabaseServer();
   const r = await sb.from("vendors").select("vendor_id, name, channel, type, note, follow").order("position");
   return { vendors: r.data || [], error: r.error?.message };
+}
+
+export async function loadHandled(): Promise<{ alerts: Alert[]; error?: string }> {
+  if (demo()) return { alerts: [] };
+  await connection();
+  const sb = await supabaseServer();
+  const r = await sb.from("alerts").select("alert_id, at, type, title, detail, from_email, lead_id, done, unread, count, ignored").eq("done", true).order("at", { ascending: false }).limit(30);
+  if (r.error) return { alerts: [], error: r.error.message };
+  return { alerts: (r.data || []).map((x) => ({ id: x.alert_id, at: x.at, type: x.type, title: (x.ignored ? "Not a lead · " : "") + (x.title || ""), detail: x.detail || "", fromEmail: x.from_email, leadId: x.lead_id, done: true, unread: false, count: x.count || 1 })) };
 }

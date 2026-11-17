@@ -19,3 +19,13 @@ export async function oldApi<T = unknown>(path: string, body: unknown): Promise<
   if (!r.ok) throw new Error(text.slice(0, 160) || `HTTP ${r.status}`);
   return (text ? JSON.parse(text) : {}) as T;
 }
+
+export async function oldGet<T = unknown>(path: string): Promise<T | null> {
+  const sb = await supabaseServer();
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return null;
+  try {
+    const r = await fetch(OLD + path, { cache: "no-store", headers: { Cookie: `ev_at=${session.access_token}` } });
+    return r.ok ? ((await r.json()) as T) : null;
+  } catch { return null; }
+}

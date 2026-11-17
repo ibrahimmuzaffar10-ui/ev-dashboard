@@ -7,7 +7,7 @@ export const demo = () => process.env.EV_DEMO === "1" && !process.env.VERCEL;
 const iso = (offset: number) => { const d = new Date(Date.now() + offset * 86400000); return d.toISOString().slice(0, 10); };
 const L = (id: string, client: string, status: string, o: Partial<Lead> = {}): Lead => ({
   id, client, email: "test@example.invalid", status, service: "wedding", channel: "Website form", inquiry: iso(-3), lastContact: null,  // leak-check: allow: made-up TEST demo data (.invalid never delivers)
-  eventText: null, venue: null, contract: "n/a", retainer: "n/a", balance: "n/a", total: null, paid: null, notes: null, next: null,
+  eventText: null, venue: null, contract: "n/a", retainer: "n/a", balance: "n/a", total: null, paid: null, notes: null, next: null, replied: "no", gallery: "n/a", review: "none", lostReason: null, fault: null,
   call: "none", callOn: null, callTime: null, days: [], ...o,
 });
 
@@ -32,9 +32,9 @@ export const demoAlerts: Alert[] = [
     detail: "Check it's matched to the right booking (Financials → Payments received).", fromEmail: null, leadId: null, done: false, unread: false, count: 1 },
 ];
 export const demoInst: Installment[] = [
-  { leadId: "L901", label: "Retainer", due: iso(-30), amount: 1500, paid: true, paidOn: iso(-30) },
-  { leadId: "L901", label: "Second payment", due: iso(4), amount: 1950, paid: false, paidOn: null },
-  { leadId: "L901", label: "Final balance", due: iso(-2), amount: 1950, paid: false, paidOn: null },
+  { leadId: "L901", index: 0, label: "Retainer", due: iso(-30), amount: 1500, paid: true, paidOn: iso(-30) },
+  { leadId: "L901", index: 1, label: "Second payment", due: iso(4), amount: 1950, paid: false, paidOn: null },
+  { leadId: "L901", index: 2, label: "Final balance", due: iso(-2), amount: 1950, paid: false, paidOn: null },
 ];
 export const demoPays: Payment[] = [
   { on: iso(-2), amount: 500, sender: "TEST SENDER", leadId: null, label: null, method: "Zelle" },
