@@ -2,7 +2,6 @@
 import { useState, useTransition } from "react";
 import type { Facts } from "@/lib/facts";
 import { addAsLead, draftToEman, markDone, notALead, reopen, type Result } from "./actions";
-import { draftReply } from "./draft";
 
 export type CardData = {
   id: string; kind: string; tone: string; who: string; when: string; fromEmail: string | null; leadId: string | null;
@@ -25,10 +24,9 @@ export function AlertCard({ a }: { a: CardData }) {
   const [body, setBody] = useState("");
   const [name, setName] = useState(a.who);
   const [handled, setHandled] = useState(false);
-  const [other, setOther] = useState(false);          // "Other": type what the reply should say, Claude drafts it
-  const [ask, setAsk] = useState("");
-  const [drafting, startDraft] = useTransition();
   const f = a.facts;
+  const blank = `Hi ${first},\n\n\n\nEman`;          // "Other": write your own reply between the greeting and the name
+  const squash = (t: string) => t.replace(/\s+/g, " ").trim();
   const run = (p: Promise<Result>, hide = true) => start(async () => { const r = await p; setMsg(r); if (r.ok && hide) setTimeout(() => setGone(true), 900); });
   if (gone) return null;
   if (handled) return (
@@ -58,29 +56,19 @@ export function AlertCard({ a }: { a: CardData }) {
       {mode === "reply" && (
         <div className="mt-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <button className="btn" onClick={() => { setBody(offerCall(first)); setOther(false); }}>📞 Offer a call</button>
-            <button className="btn" onClick={() => { setBody(askDetails(first)); setOther(false); }}>✉️ Ask details</button>
-            <button className="btn" style={other ? { background: "var(--accent-soft)" } : undefined} onClick={() => setOther(!other)}>✍️ Other</button>
+            <button className="btn" onClick={() => { setBody(offerCall(first)); }}>📞 Offer a call</button>
+            <button className="btn" onClick={() => { setBody(askDetails(first)); }}>✉️ Ask details</button>
+            <button className="btn" onClick={() => setBody(blank)}>✍️ Other</button>
           </div>
-          {other && (
-            <div className="space-y-2 rounded-xl bg-[var(--panel-2)] p-3">
-              <input value={ask} onChange={(e) => setAsk(e.target.value)} maxLength={500} placeholder="What should the reply say? e.g. ask if their dates are flexible"
-                     className="w-full rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-[15px]" />
-              <button className="btn btn-primary w-full" disabled={drafting || ask.trim().length < 3}
-                      onClick={() => startDraft(async () => { const r = await draftReply(a.id, ask); setMsg(r.ok ? null : r); if (r.ok && r.text) { setBody(r.text); } })}>
-                {drafting ? "Writing draft…" : body ? "Rewrite draft" : "Write draft"}
-              </button>
-            </div>
-          )}
           {body && <>
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} autoFocus className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
             <p className="text-[12px] text-[var(--muted)]">This goes only to Eman&apos;s inbox. She checks it and sends it to the client herself.</p>
             <div className="flex gap-2">
-              <button disabled={pending || body.length < 20} className="btn btn-primary flex-1"
+              <button disabled={pending || body.length < 20 || squash(body) === squash(blank)} className="btn btn-primary flex-1"
                       onClick={() => run(draftToEman(a.id, a.subject || "Your message", body), false)}>
                 {pending ? "Emailing…" : "📧 Email draft to Eman"}
               </button>
-              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setOther(false); setAsk(""); setMsg(null); }}>Discard</button>
+              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setMsg(null); }}>Discard</button>
             </div>
           </>}
         </div>
