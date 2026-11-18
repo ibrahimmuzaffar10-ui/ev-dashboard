@@ -7,6 +7,9 @@ import { serviceLabel } from "@/components/ui";
 import { Skeleton } from "@/components/page-title";
 import { ledger } from "@/lib/money";
 import { Editor } from "./editor";
+import { OPTS } from "@/lib/lead-options";
+import { CloseLead } from "./close";
+import { staleWhy } from "@/lib/stale";
 import { PlanEditor } from "./plan";
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +21,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const plan = inst.filter((i) => i.leadId === id);
   const got = pays.filter((p) => p.leadId === id);
   const g = ledger(l, pays);
+  const stale = staleWhy(l, today);
   return (
     <>
       <div className="pt-3"><Link href="/leads" className="text-sm font-medium text-[var(--accent)]">‹ Leads</Link></div>
@@ -43,7 +47,9 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </Section>
 
-      <Section title="Details"><Editor lead={l} /></Section>
+      {stale && <div className="card mt-4 border-l-4 p-4 text-[14px]" style={{ borderLeftColor: "var(--amber)" }}><b>Looks stale:</b> {stale.text}. If it&apos;s not going anywhere, close it at the bottom of this page.</div>}
+
+      <Section title="Details"><Editor key={`${l.status}-${(l.notes || "").length}`} lead={l} /></Section>
 
       {(l.status === "booked" || l.status === "completed" || plan.length > 0 || got.length > 0) && (
         <>
@@ -103,6 +109,10 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
       {l.email && <p className="mt-4 text-center text-[15px]"><a href={`mailto:${l.email}`} className="text-[var(--accent)]">{l.email}</a></p>}
       {["open", "booked", "unanswered"].includes(l.status) && (
         <Link href={`/leads/${l.id}/contract`} className="btn mt-4 w-full">📄 {l.contract && !["n/a", "unknown"].includes(l.contract) ? "Re-create contract" : "Create contract"}</Link>
+      )}
+      {["unanswered", "open", "ghosted", "lost"].includes(l.status) && (
+        <CloseLead id={l.id} status={l.status} notes={l.notes || ""} suggest={stale?.reason || ""} stamp={day(today, { month: "short", day: "numeric", year: "numeric" })}
+                   why={OPTS.lost_reason.find(([k]) => k === l.lostReason)?.[1] || null} />
       )}
     </>
   );

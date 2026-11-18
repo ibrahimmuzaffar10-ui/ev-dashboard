@@ -48,3 +48,27 @@ export async function createContract(body: ContractBody): Promise<Result> {
 export async function schedule(id: string, payload: { action: "add" | "update" | "delete"; index?: number; label?: string; amount?: number; due?: string; paid?: boolean }): Promise<Result> {
   try { await oldApi("/api/schedule", { id, ...payload }); revalidatePath(`/leads/${id}`); revalidatePath("/money"); return { ok: true, msg: payload.action === "delete" ? "Removed" : "Saved" }; } catch (e) { return fail(e); }
 }
+
+// Close a lead that is no longer going anywhere. Nothing is deleted: the lead moves to the Lost tab (status
+// "ghosted" when the client stopped replying, else "lost"), keeps every detail, and its notes get a dated "Closed" line.
+// Reason + side are saved before the status, so a lead never shows as lost without a reason.
+export async function closeLead(id: string, reason: string, fault: string, note: string, notesBefore: string, stamp: string): Promise<Result> {
+  try {
+    await oldApi("/api/update", { id, field: "lost_reason", value: reason });
+    await oldApi("/api/update", { id, field: "fault", value: fault });
+    const line = `Closed ${stamp}${note.trim() ? `: ${note.trim().slice(0, 300)}` : ""}`;
+    await oldApi("/api/update", { id, field: "notes", value: notesBefore ? `${notesBefore}\n${line}` : line });
+    await oldApi("/api/update", { id, field: "status", value: reason === "client_ghosted" ? "ghosted" : "lost" });
+    revalidatePath(`/leads/${id}`); revalidatePath("/leads"); revalidatePath("/");
+    return { ok: true, msg: "Moved to Lost" };
+  } catch (e) { return fail(e); }
+}
+
+export async function reopenLead(id: string, notesBefore: string, stamp: string): Promise<Result> {
+  try {
+    await oldApi("/api/update", { id, field: "status", value: "open" });
+    await oldApi("/api/update", { id, field: "notes", value: `${notesBefore ? notesBefore + "\n" : ""}Reopened ${stamp}` });
+    revalidatePath(`/leads/${id}`); revalidatePath("/leads"); revalidatePath("/");
+    return { ok: true, msg: "Reopened · now Waiting on client" };
+  } catch (e) { return fail(e); }
+}

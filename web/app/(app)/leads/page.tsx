@@ -4,10 +4,12 @@ import { loadLeads, todayCT, type Lead } from "@/lib/data";
 import { Empty, StatusPill, day } from "@/components/ui";
 import { serviceLabel } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
+import { staleWhy } from "@/lib/stale";
 
 const FILTERS: [string, string, (l: Lead, today: string) => boolean][] = [
   ["reply", "Needs reply", (l) => l.status === "unanswered"],
   ["open", "Waiting", (l) => l.status === "open"],
+  ["stale", "Stale", (l, today) => !!staleWhy(l, today)],
   ["booked", "Booked", (l) => l.status === "booked"],
   ["calls", "Calls", (l) => ["offered", "booked"].includes(l.call)],
   ["past", "Completed", (l) => l.status === "completed"],
@@ -41,6 +43,7 @@ async function List({ searchParams }: { searchParams: Promise<{ f?: string; q?: 
       <form className="mt-3"><input type="hidden" name="f" value={f[0]} />
         <input name="q" defaultValue={sp.q || ""} placeholder="Search name, email, notes" className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5 text-[15px]" />
       </form>
+      {f[0] === "stale" && rows.length > 0 && <p className="mt-3 px-1 text-[13px] text-[var(--muted)]">Still marked Needs reply or Waiting, but the event date passed or nothing happened for 45+ days. Open one and use <b>Close this lead</b> at the bottom; nothing is deleted.</p>}
       {rows.length ? (
         <ul className="card mt-3 divide-y divide-[var(--line)]">
           {rows.map((l) => {
@@ -53,6 +56,7 @@ async function List({ searchParams }: { searchParams: Promise<{ f?: string; q?: 
                     <div className="truncate text-[13px] text-[var(--muted)]">
                       {[serviceLabel(l.service), d ? "📅 " + day(d, { month: "short", day: "numeric", year: "numeric" }) : l.eventText || null, l.call === "booked" && l.callOn ? "📞 " + day(l.callOn) : l.call === "offered" ? "📞 offered" : null].filter(Boolean).join(" · ") || `Inquired ${day(l.inquiry, { month: "short", day: "numeric" })}`}{/* leak-check: allow: the app word "inquiry", not client data */}
                     </div>
+                    {f[0] === "stale" && <div className="truncate text-[12px]" style={{ color: "var(--amber)" }}>{staleWhy(l, today)?.text}</div>}
                   </div>
                   <StatusPill status={l.status} />
                 </Link>
