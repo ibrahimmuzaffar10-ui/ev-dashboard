@@ -57,13 +57,23 @@ def main():
         leads = (db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json"))))["leads"]
         toks = lambda s: set(re.findall(r"[a-z]{3,}", (s or "").lower())) - {"and", "the", "via", "muhammad", "mohammad", "ali"}  # leak-check: allow: very common names excluded from fuzzy matching, not a person
         for p in pays:
-            if p.get("lead_id"): continue
+            if p.get("lead_id") or p.get("personal"): continue      # personal money is never auto-matched to a client
             pt = toks(p["sender"])
             cands = [l for l in leads if pt and len(pt & toks(l["client"])) >= min(2, len(pt))]
-            if len(cands) == 1: p["lead_id"] = cands[0]["id"]; p["client"] = cands[0]["client"]
+            if len(cands) == 1: p["_match"] = (cands[0]["id"], cands[0]["client"])
     except Exception as ex:
         print("match skipped:", ex)
-    db.payments_save(pays)
+    # 11/18: add only the new payments, then link matches one row at a time (re-checked under the lock), so a payment
+    # matched / applied / marked personal in the app meanwhile is never overwritten by this run's older copy
+    db.payments_add([{k: v for k, v in p.items() if k != "_match"} for p in new])
+    for p in pays:
+        if p.get("_match"):
+            lid, client = p["_match"]
+            def link(x, lid=lid, client=client):
+                if not x.get("lead_id") and not x.get("personal"):
+                    x["lead_id"] = lid; x["client"] = client
+            try: db.payment_change(p["email_id"], link)
+            except ValueError: pass
     if learned:
         db.doc_write("zelle_ids", ids)
     print(json.dumps(new, indent=1))

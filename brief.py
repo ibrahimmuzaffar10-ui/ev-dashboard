@@ -88,7 +88,7 @@ for l in DATA["leads"]:
         if 0 <= n <= 1:
             calls_soon.append(f"- 📞 **{name(l)}** " + ("today" if n == 0 else "tomorrow") + (f" {l['call_time']}" if l.get("call_time") else ""))
 calls_offer.sort(key=lambda l: l.get("event") or "9999")
-unmatched = [p for p in PAYS if not p.get("lead_id") and p.get("date", "") >= (today - datetime.timedelta(days=14)).isoformat()]
+unmatched = [p for p in PAYS if not p.get("lead_id") and not p.get("personal") and p.get("date", "") >= (today - datetime.timedelta(days=14)).isoformat()]
 
 slot = "Morning" if ct.hour < 15 else "Night"
 

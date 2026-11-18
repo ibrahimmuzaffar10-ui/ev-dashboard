@@ -451,17 +451,16 @@ def payments_save(pays):
         _tls.tx["done"] = True
 
 
-def payment_link(email_id, lead_id, client):
-    """Match ONE payment to a lead (or unmatch with lead_id=None) without rewriting the list, read and written
-    under the save lock, so a Zelle import running at the same moment can never be lost."""
+def payment_change(email_id, change):
+    """Change ONE payment (change(p) edits the dict in place) without rewriting the list, read and written under the
+    save lock, so a Zelle import running at the same moment can never be lost. Returns the changed payment."""
     if not CLOUD:
         pays = payments_all()
         p = next((x for x in pays if x.get("email_id") == email_id), None)
         if not p: raise ValueError("payment not found")
-        p["lead_id"] = lead_id
-        if lead_id: p["client"] = client
-        else: p.pop("client", None)
-        return doc_write("payments", pays, indent=1)
+        change(p)
+        doc_write("payments", pays, indent=1)
+        return p
     import legacy
     with locked(None):
         c = _tls.tx["conn"]
@@ -470,12 +469,61 @@ def payment_link(email_id, lead_id, client):
             raise ValueError("payment not found")
         r = json.loads(got[0][0])
         p = legacy.rebuild_flat(r, legacy.PAY)
-        p["lead_id"] = lead_id
-        if lead_id: p["client"] = client
-        else: p.pop("client", None)
+        change(p)
         _upd(c, "payments", legacy.split_flat(p, r["position"], legacy.PAY), "email_id", email_id)
         c.run("commit")
         _tls.tx["done"] = True
+        return p
+
+
+def payments_add(items):
+    """Add NEW payments only (an email_id already present is skipped) and keep the list newest-first by
+    renumbering positions; existing rows' content is never rewritten, so a change made in the app at the same
+    moment (matched, applied, marked personal) can't be lost. Returns how many were added."""
+    if not items:
+        return 0
+    if not CLOUD:
+        pays = payments_all(); have = {p.get("email_id") for p in pays}
+        add = [p for p in items if p.get("email_id") not in have]
+        pays = sorted(pays + add, key=lambda p: p.get("date") or "", reverse=True)
+        doc_write("payments", pays, indent=1)
+        return len(add)
+    import legacy
+    with locked(None):
+        c = _tls.tx["conn"]
+        rows = c.run("select email_id, received_on::text, position from public.payments")
+        have = {r[0] for r in rows}
+        add = [p for p in items if p.get("email_id") not in have]
+        top = max([r[2] for r in rows] + [-1])
+        for i, p in enumerate(add):
+            _ins(c, "payments", legacy.split_flat(p, top + 1 + i, legacy.PAY))
+        order = sorted([(r[1] or "", -r[2], r[0]) for r in rows] + [(p.get("date") or "", -(top + 1 + i), p["email_id"]) for i, p in enumerate(add)],
+                       key=lambda x: (x[0], x[1]), reverse=True)
+        for pos, (_, _, eid) in enumerate(order):
+            c.run("update public.payments set position = :p where email_id = :e and position <> :p", p=pos, e=eid)
+        c.run("commit")
+        _tls.tx["done"] = True
+        return len(add)
+
+
+def payment_link(email_id, lead_id, client):
+    """Match ONE payment to a lead (or unmatch with lead_id=None)."""
+    def ch(p):
+        p["lead_id"] = lead_id
+        if lead_id: p["client"] = client
+        else: p.pop("client", None)
+    return payment_change(email_id, ch)
+
+
+def payment_personal(email_id, personal):
+    """Mark ONE unmatched payment as personal money (not business income), or back. Kept as an extra key
+    (stored losslessly); absent = business."""
+    def ch(p):
+        if personal and p.get("lead_id"):
+            raise ValueError("this payment is already matched to a booking")
+        if personal: p["personal"] = True
+        else: p.pop("personal", None)
+    return payment_change(email_id, ch)
 
 
 def email_rows():

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { applyPayment } from "./actions";
+import { applyPayment, setPersonal } from "./actions";
 
 export type Owing = { id: string; label: string };
 
@@ -27,8 +27,21 @@ export function Match({ emailId, owing }: { emailId: string; owing: Owing[] }) {
         </button>
         <button className="btn" onClick={() => { setOpen(false); setMsg(null); }}>Cancel</button>
       </div>
+      <button className="btn w-full" disabled={pending}
+              onClick={() => start(async () => { const r = await setPersonal(emailId, true); setMsg(r); if (r.ok) setTimeout(() => router.refresh(), 1500); })}>
+        Personal, not business income
+      </button>
       {msg && !msg.ok && <p className="text-[12px] text-[var(--red)]">{msg.msg}</p>}
       {!owing.length && <p className="text-[12px] text-[var(--muted)]">No booking has money left to pay.</p>}
     </div>
   );
+}
+
+export function BackToBusiness({ emailId }: { emailId: string }) {
+  const [done, setDone] = useState("");
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  if (done) return <span className="text-[12px]" style={{ color: "var(--green)" }}>{done}</span>;
+  return <button className="btn !min-h-8 !px-3 !py-1 text-[13px]" disabled={pending}
+                 onClick={() => start(async () => { const r = await setPersonal(emailId, false); setDone(r.ok ? "✓ Business" : r.msg); if (r.ok) setTimeout(() => router.refresh(), 1200); })}>Move to business</button>;
 }

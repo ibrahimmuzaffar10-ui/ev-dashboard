@@ -18,7 +18,8 @@ function Stat({ k, v, s }: { k: string; v: string; s?: string }) {
 
 async function Progress() {
   const today = await todayCT();
-  const [{ leads }, { inst, pays, error }] = await Promise.all([loadLeads(), loadMoney()]);
+  const [{ leads }, { inst, pays: allPays, error }] = await Promise.all([loadLeads(), loadMoney()]);
+  const pays = allPays.filter((p) => !p.personal);          // business income only
   if (error) return <Empty>Couldn&apos;t load: {error}</Empty>;
   const ym = today.slice(0, 7), year = today.slice(0, 4);
   const sumBy = <T,>(xs: T[], key: (x: T) => string | null | undefined, val: (x: T) => number) => {

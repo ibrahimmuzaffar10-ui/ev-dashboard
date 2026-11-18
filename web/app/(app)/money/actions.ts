@@ -12,3 +12,9 @@ export async function applyPayment(emailId: string, leadId: string) {
     return { ok: true, msg: `${r.client}: ${r.applied.join(", ")}${left}` };
   } catch (e) { return { ok: false, msg: e instanceof Error ? e.message : "Not saved" }; }
 }
+
+export async function setPersonal(emailId: string, personal: boolean) {
+  try { await oldApi("/api/payment-personal", { email_id: emailId, personal }); revalidatePath("/money"); revalidatePath("/money/progress");
+        return { ok: true, msg: personal ? "Marked personal · not counted as business income" : "Moved back to business" }; }
+  catch (e) { return { ok: false, msg: e instanceof Error ? e.message : "Not saved" }; }
+}

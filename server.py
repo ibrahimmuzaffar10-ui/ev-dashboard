@@ -330,6 +330,12 @@ class H(BaseHTTPRequestHandler):
             if self.path == "/api/push-test":                  # phone app "Send a test notification": the Mac sends it
                 if db.CLOUD: db.doc_write("push_test_request", {"at": evtime.now_ct().isoformat(timespec="seconds")})
                 return self._send(200, json.dumps({"ok": True}))
+            if self.path == "/api/payment-personal":         # Ibrahim 11/18: a Zelle that isn't photography income
+                try:
+                    db.payment_personal(str(body.get("email_id") or ""), bool(body.get("personal")))
+                except ValueError as ex:
+                    return self._send(409 if "matched" in str(ex) else 404, str(ex), "text/plain")
+                return self._send(200, json.dumps({"ok": True}))
             if self.path == "/api/payment-apply":            # Ibrahim 11/17: credit a Zelle (any sender) to a booking's payments
                 return self._payment_apply(body)
             if self.path == "/api/payment-match":            # match an unmatched payment to a lead (or undo); own lock, one row
@@ -598,6 +604,7 @@ class H(BaseHTTPRequestHandler):
         pay = next((x for x in db.payments_all() if str(x.get("email_id")) == eid), None)
         if not pay: return self._send(404, "payment not found", "text/plain")
         if pay.get("lead_id"): return self._send(409, "this payment is already matched", "text/plain")
+        if pay.get("personal"): return self._send(409, "this payment is marked personal: move it back to business first", "text/plain")
         amt = float(pay.get("amount") or 0)
         if amt <= 0: return self._send(400, "payment has no amount", "text/plain")
         on = str(pay.get("date") or today())[:10]

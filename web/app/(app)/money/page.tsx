@@ -3,13 +3,15 @@ import { Suspense } from "react";
 import { loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Empty, Pill, Section, day, daysFrom, money, serviceLabel } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
-import { Match } from "./match";
+import { BackToBusiness, Match } from "./match";
 import { MoneyTabs } from "./tabs";
 
 async function Money() {
   const today = await todayCT();
-  const [{ leads }, { inst, pays, error }] = await Promise.all([loadLeads(), loadMoney()]);
+  const [{ leads }, { inst, pays: allPays, error }] = await Promise.all([loadLeads(), loadMoney()]);
   if (error) return <Empty>Couldn&apos;t load: {error}</Empty>;
+  const personal = allPays.filter((p) => p.personal);
+  const pays = allPays.filter((p) => !p.personal);          // business money only (personal Zelles are kept apart)
   const name = new Map(leads.map((l) => [l.id, l.client]));
   const month = today.slice(0, 7), year = today.slice(0, 4);
   const sum = (xs: { amount: number }[]) => xs.reduce((a, b) => a + b.amount, 0);
@@ -44,7 +46,7 @@ async function Money() {
 
       {unmatched.length > 0 && (
         <Section title={`To match (${unmatched.length})`}>
-          <p className="mb-2 px-1 text-[13px] text-[var(--muted)]">Zelles we couldn&apos;t tie to a client automatically (often a parent, sibling or in-law paid). Tap Match and pick the booking it&apos;s for.</p>
+          <p className="mb-2 px-1 text-[13px] text-[var(--muted)]">Zelles we couldn&apos;t tie to a client automatically (often a parent, sibling or in-law paid). Tap Match and pick the booking, or mark it Personal if it isn&apos;t business money.</p>
           <ul className="card divide-y divide-[var(--line)]">
             {unmatched.map((p) => (
               <li key={p.emailId} className="flex flex-wrap items-center justify-between gap-x-3 px-4 py-3">
@@ -91,6 +93,19 @@ async function Money() {
         ) : <Empty>No bookings with a total yet.</Empty>}
       </Section>
 
+      {personal.length > 0 && (
+        <details className="mt-6">
+          <summary className="cursor-pointer px-1 text-[13px] font-semibold uppercase tracking-wide text-[var(--muted)]">Personal, not business ({personal.length} · {money(personal.reduce((a, b) => a + b.amount, 0))})</summary>
+          <ul className="card mt-2 divide-y divide-[var(--line)]">
+            {personal.map((p) => (
+              <li key={p.emailId} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0"><div className="truncate font-medium">{p.sender || "Unknown sender"}</div><div className="text-sm text-[var(--muted)]">{day(p.on, { month: "short", day: "numeric", year: "numeric" })}</div></div>
+                <div className="flex items-center gap-2"><span className="font-semibold tabular-nums">{money(p.amount)}</span><BackToBusiness emailId={p.emailId} /></div>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <Section title="Recently received">
         {recent.length ? (
           <ul className="card divide-y divide-[var(--line)]">
