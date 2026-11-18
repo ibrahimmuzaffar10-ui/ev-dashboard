@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import type { Facts } from "@/lib/facts";
-import { addAsLead, markDone, notALead, sendReply, type Result } from "./actions";
+import { addAsLead, markDone, notALead, reopen, sendReply, type Result } from "./actions";
 
 export type CardData = {
   id: string; kind: string; tone: string; who: string; when: string; fromEmail: string | null; leadId: string | null;
@@ -24,9 +24,17 @@ export function AlertCard({ a }: { a: CardData }) {
   const [body, setBody] = useState("");
   const [call, setCall] = useState(false);
   const [name, setName] = useState(a.who);
+  const [armed, setArmed] = useState(false);          // Send needs two taps: no email goes out by accident
+  const [handled, setHandled] = useState(false);
   const f = a.facts;
   const run = (p: Promise<Result>, hide = true) => start(async () => { const r = await p; setMsg(r); if (r.ok && hide) setTimeout(() => setGone(true), 900); });
   if (gone) return null;
+  if (handled) return (
+    <article className="card flex items-center justify-between gap-3 p-4 text-[14px]">
+      <span><b>{a.who}</b> moved to Handled.<span className="block text-[12px] text-[var(--muted)]">No email was sent. Also undoable later in Inbox → Handled.</span></span>
+      <button className="btn shrink-0" disabled={pending} onClick={() => start(async () => { const r = await reopen(a.id, false); if (r.ok) setHandled(false); else setMsg(r); })}>Undo</button>
+    </article>
+  );
   const chips = [f.service, ...f.dates.map((d) => "📅 " + d), f.time && "🕓 " + f.time, f.place && "📍 " + f.place, f.hours && "⏱ " + f.hours, f.guests && "👥 " + f.guests, f.video && "🎥 Photo + video"].filter(Boolean) as string[];
 
   return (
@@ -53,7 +61,14 @@ export function AlertCard({ a }: { a: CardData }) {
           </div>
           {body && <>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
-            <button disabled={pending || body.length < 20} className="btn btn-primary w-full" onClick={() => run(sendReply(a.id, "Re: " + (a.subject || "Your message"), body, call))}>{pending ? "Sending…" : `Send to ${a.fromEmail}`}</button>
+            <p className="text-[12px] text-[var(--muted)]">Draft only. Nothing is sent until you tap Send twice.</p>
+            <div className="flex gap-2">
+              <button disabled={pending || body.length < 20} className="btn btn-primary flex-1" style={armed ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
+                      onClick={() => { if (!armed) { setArmed(true); setTimeout(() => setArmed(false), 5000); return; } setArmed(false); run(sendReply(a.id, "Re: " + (a.subject || "Your message"), body, call)); }}>
+                {pending ? "Sending…" : armed ? "Tap again to send now" : `Send to ${a.fromEmail}`}
+              </button>
+              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setArmed(false); }}>Discard</button>
+            </div>
           </>}
         </div>
       )}
@@ -72,7 +87,7 @@ export function AlertCard({ a }: { a: CardData }) {
       <div className="mt-3 flex flex-wrap gap-2">
         {a.isPerson && a.fromEmail && <button className="btn btn-primary" onClick={() => setMode(mode === "reply" ? "" : "reply")}>Reply</button>}
         {a.isPerson && !a.leadId && <button className="btn" onClick={() => setMode(mode === "lead" ? "" : "lead")}>Add as lead</button>}
-        <button className="btn" disabled={pending} onClick={() => run(markDone(a.id))}>Done</button>
+        {!(mode === "reply" && body) && <button className="btn" disabled={pending} onClick={() => start(async () => { const r = await markDone(a.id, false); if (r.ok) setHandled(true); else setMsg(r); })}>Mark handled</button>}
         {a.isPerson && !a.leadId && <button className="btn ml-auto border-transparent text-[var(--muted)]" disabled={pending} onClick={() => run(notALead(a.id))}>Not a lead</button>}
       </div>
       {msg && <p role="status" className="mt-2 text-[13px]" style={{ color: msg.ok ? "var(--green)" : "var(--red)" }}>{msg.ok ? "✓ " : ""}{msg.msg}</p>}

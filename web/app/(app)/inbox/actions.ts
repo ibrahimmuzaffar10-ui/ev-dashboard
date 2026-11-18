@@ -5,8 +5,9 @@ import { oldApi, oldGet } from "@/lib/bridge";
 export type Result = { ok: boolean; msg: string };
 const fail = (e: unknown): Result => ({ ok: false, msg: e instanceof Error ? e.message : "Something went wrong" });
 
-export async function markDone(id: string): Promise<Result> {
-  try { await oldApi("/api/alert", { id, action: "done" }); revalidatePath("/inbox"); return { ok: true, msg: "Marked handled" }; } catch (e) { return fail(e); }
+// refresh=false keeps the card on screen showing "Moved to Handled · Undo" (the Inbox refreshes on its own later)
+export async function markDone(id: string, refresh = true): Promise<Result> {
+  try { await oldApi("/api/alert", { id, action: "done" }); if (refresh) revalidatePath("/inbox"); return { ok: true, msg: "Marked handled" }; } catch (e) { return fail(e); }
 }
 
 export async function notALead(id: string): Promise<Result> {
@@ -45,6 +46,6 @@ export async function outboxAction(id: number, action: "cancel" | "retry"): Prom
   try { await oldApi("/api/outbox-action", { id, action }); revalidatePath("/inbox"); return { ok: true, msg: action === "retry" ? "Queued to send" : "Cancelled" }; } catch (e) { return fail(e); }
 }
 
-export async function reopen(id: string): Promise<Result> {
-  try { await oldApi("/api/alert", { id, action: "undo" }); revalidatePath("/inbox"); return { ok: true, msg: "Reopened" }; } catch (e) { return fail(e); }
+export async function reopen(id: string, refresh = true): Promise<Result> {
+  try { await oldApi("/api/alert", { id, action: "undo" }); if (refresh) revalidatePath("/inbox"); return { ok: true, msg: "Reopened" }; } catch (e) { return fail(e); }
 }
