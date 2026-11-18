@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Empty, Pill, Section, day, daysFrom, money, serviceLabel } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
-import { BackToBusiness, Match } from "./match";
+import { Match, Unsort } from "./match";
 import { MoneyTabs } from "./tabs";
 
 async function Money() {
@@ -21,7 +21,8 @@ async function Money() {
   const overdue = open.filter((i) => i.due && daysFrom(today, i.due) < 0);
   const next30 = open.filter((i) => i.due && daysFrom(today, i.due) >= 0 && daysFrom(today, i.due) <= 30);
   const booked = leads.filter((l) => ["booked", "completed"].includes(l.status) && l.days.some((d) => d.day?.startsWith(year)));
-  const unmatched = pays.filter((p) => !p.leadId);
+  const unmatched = pays.filter((p) => !p.leadId && !p.otherIncome);
+  const other = pays.filter((p) => p.otherIncome);
   const bookings = leads.filter((l) => ["booked", "completed"].includes(l.status) && (l.total || 0) > 0).map((l) => {
     const plan = inst.filter((i) => i.leadId === l.id);
     const paid = l.paid ?? plan.filter((i) => i.paid).reduce((a, b) => a + b.amount, 0);
@@ -100,7 +101,20 @@ async function Money() {
             {personal.map((p) => (
               <li key={p.emailId} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0"><div className="truncate font-medium">{p.sender || "Unknown sender"}</div><div className="text-sm text-[var(--muted)]">{day(p.on, { month: "short", day: "numeric", year: "numeric" })}</div></div>
-                <div className="flex items-center gap-2"><span className="font-semibold tabular-nums">{money(p.amount)}</span><BackToBusiness emailId={p.emailId} /></div>
+                <div className="flex items-center gap-2"><span className="font-semibold tabular-nums">{money(p.amount)}</span><Unsort emailId={p.emailId} /></div>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {other.length > 0 && (
+        <details className="mt-6">
+          <summary className="cursor-pointer px-1 text-[13px] font-semibold uppercase tracking-wide text-[var(--muted)]">Business income, no booking ({other.length} · {money(other.reduce((a, b) => a + b.amount, 0))})</summary>
+          <ul className="card mt-2 divide-y divide-[var(--line)]">
+            {other.map((p) => (
+              <li key={p.emailId} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0"><div className="truncate font-medium">{p.sender || "Unknown sender"}</div><div className="truncate text-sm text-[var(--muted)]">{day(p.on, { month: "short", day: "numeric", year: "numeric" })}{p.note ? ` · ${p.note}` : ""}</div></div>
+                <div className="flex items-center gap-2"><span className="font-semibold tabular-nums" style={{ color: "var(--green)" }}>{money(p.amount)}</span><Unsort emailId={p.emailId} /></div>
               </li>
             ))}
           </ul>

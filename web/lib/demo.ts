@@ -37,10 +37,10 @@ export const demoInst: Installment[] = [
   { leadId: "L901", index: 2, label: "Final balance", due: iso(-2), amount: 1950, paid: false, paidOn: null },
 ];
 export const demoPays: Payment[] = [
-  { emailId: "demo-1", personal: false, on: iso(-2), amount: 500, sender: "TEST SENDER", leadId: null, label: null, method: "Zelle" },
-  { emailId: "demo-2", personal: false, on: iso(-30), amount: 1500, sender: "TEST", leadId: "L901", label: null, method: "Zelle" },
+  { emailId: "demo-1", personal: false, otherIncome: false, note: null, on: iso(-2), amount: 500, sender: "TEST SENDER", leadId: null, label: null, method: "Zelle" },
+  { emailId: "demo-2", personal: false, otherIncome: false, note: null, on: iso(-30), amount: 1500, sender: "TEST", leadId: "L901", label: null, method: "Zelle" },
 ];
 // more made-up history so the Progress charts have something to draw in the local preview
-for (let m = 1; m <= 9; m++) demoPays.push({ emailId: `demo-h${m}`, personal: false, on: iso(-30 * m), amount: 400 + ((m * 731) % 2600), sender: "TEST", leadId: "L901", label: null, method: "Zelle" });
+for (let m = 1; m <= 9; m++) demoPays.push({ emailId: `demo-h${m}`, personal: false, otherIncome: false, note: null, on: iso(-30 * m), amount: 400 + ((m * 731) % 2600), sender: "TEST", leadId: "L901", label: null, method: "Zelle" });
 for (let m = 0; m < 10; m++) demoLeads.push(L(`L95${m}`, `TEST Client H${m}`, m % 3 === 0 ? "completed" : m % 3 === 1 ? "lost" : "ghosted", { inquiry: iso(-30 * m - 5) }));  // leak-check: allow: the app field name "inquiry", not client data
 export const demoVendors = [{ vendor_id: 1, name: "TEST Planner Co.", channel: "Instagram", type: "Planner", note: "Send gallery within 7 days", follow: null }];

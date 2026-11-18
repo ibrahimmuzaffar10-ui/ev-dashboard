@@ -57,7 +57,7 @@ def main():
         leads = (db.load() if db.CLOUD else json.load(open(os.path.join(db.DATA_DIR, "tracker_data.json"))))["leads"]
         toks = lambda s: set(re.findall(r"[a-z]{3,}", (s or "").lower())) - {"and", "the", "via", "muhammad", "mohammad", "ali"}  # leak-check: allow: very common names excluded from fuzzy matching, not a person
         for p in pays:
-            if p.get("lead_id") or p.get("personal"): continue      # personal money is never auto-matched to a client
+            if p.get("lead_id") or p.get("personal") or p.get("other_income"): continue      # sorted payments are never auto-matched
             pt = toks(p["sender"])
             cands = [l for l in leads if pt and len(pt & toks(l["client"])) >= min(2, len(pt))]
             if len(cands) == 1: p["_match"] = (cands[0]["id"], cands[0]["client"])
@@ -70,7 +70,7 @@ def main():
         if p.get("_match"):
             lid, client = p["_match"]
             def link(x, lid=lid, client=client):
-                if not x.get("lead_id") and not x.get("personal"):
+                if not x.get("lead_id") and not x.get("personal") and not x.get("other_income"):
                     x["lead_id"] = lid; x["client"] = client
             try: db.payment_change(p["email_id"], link)
             except ValueError: pass

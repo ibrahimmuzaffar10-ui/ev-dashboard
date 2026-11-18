@@ -515,15 +515,23 @@ def payment_link(email_id, lead_id, client):
     return payment_change(email_id, ch)
 
 
-def payment_personal(email_id, personal):
-    """Mark ONE unmatched payment as personal money (not business income), or back. Kept as an extra key
-    (stored losslessly); absent = business."""
+def payment_category(email_id, category, note=""):
+    """Sort ONE unmatched payment: "personal" (not business income), "other" (business income without a booking,
+    e.g. second-shooting for another photographer) or None (back to "to match"). Extra keys, stored losslessly."""
+    if category not in ("personal", "other", None):
+        raise ValueError("unknown category")
     def ch(p):
-        if personal and p.get("lead_id"):
+        if category and p.get("lead_id"):
             raise ValueError("this payment is already matched to a booking")
-        if personal: p["personal"] = True
-        else: p.pop("personal", None)
+        p.pop("personal", None); p.pop("other_income", None); p.pop("note", None)
+        if category == "personal": p["personal"] = True
+        if category == "other": p["other_income"] = True
+        if category and note: p["note"] = str(note)[:120]
     return payment_change(email_id, ch)
+
+
+def payment_personal(email_id, personal):
+    return payment_category(email_id, "personal" if personal else None)
 
 
 def email_rows():

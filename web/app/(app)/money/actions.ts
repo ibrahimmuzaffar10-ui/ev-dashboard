@@ -13,8 +13,9 @@ export async function applyPayment(emailId: string, leadId: string) {
   } catch (e) { return { ok: false, msg: e instanceof Error ? e.message : "Not saved" }; }
 }
 
-export async function setPersonal(emailId: string, personal: boolean) {
-  try { await oldApi("/api/payment-personal", { email_id: emailId, personal }); revalidatePath("/money"); revalidatePath("/money/progress");
-        return { ok: true, msg: personal ? "Marked personal · not counted as business income" : "Moved back to business" }; }
+// "personal" = not business income · "other" = business income without a booking (e.g. second shooting) · null = back to "to match"
+export async function setCategory(emailId: string, category: "personal" | "other" | null, note = "") {
+  try { await oldApi("/api/payment-category", { email_id: emailId, category, note }); revalidatePath("/money"); revalidatePath("/money/progress");
+        return { ok: true, msg: category === "personal" ? "Marked personal · not counted as business income" : category === "other" ? "Counted as business income (no booking)" : "Back in “To match”" }; }
   catch (e) { return { ok: false, msg: e instanceof Error ? e.message : "Not saved" }; }
 }
