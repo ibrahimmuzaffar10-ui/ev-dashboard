@@ -8,6 +8,7 @@ from email.utils import formatdate, make_msgid
 import evenv  # noqa: F401  (loads .env.local)
 
 SELF = "self"          # queued "to Eman herself": the Mac sender fills in her address
+REVIEWER = "reviewer"  # queued to whoever reviews reply drafts (EV_DRAFT_TO, else Eman): filled in by the Mac sender
 PDF = "application/pdf"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 

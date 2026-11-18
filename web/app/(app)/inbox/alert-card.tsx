@@ -62,11 +62,11 @@ export function AlertCard({ a }: { a: CardData }) {
           </div>
           {body && <>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} autoFocus className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
-            <p className="text-[12px] text-[var(--muted)]">This goes only to Eman&apos;s inbox. She checks it and sends it to the client herself.</p>
+            <p className="text-[12px] text-[var(--muted)]">This goes only to Ibrahim&apos;s inbox for review. Nothing is sent to the client.</p>
             <div className="flex gap-2">
               <button disabled={pending || body.length < 20 || squash(body) === squash(blank)} className="btn btn-primary flex-1"
                       onClick={() => run(draftToEman(a.id, a.subject || "Your message", body), false)}>
-                {pending ? "Emailing…" : "📧 Email draft to Eman"}
+                {pending ? "Emailing…" : "📧 Email draft to Ibrahim"}
               </button>
               <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setMsg(null); }}>Discard</button>
             </div>

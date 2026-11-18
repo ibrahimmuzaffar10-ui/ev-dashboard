@@ -76,6 +76,8 @@ def send_one(c, row):
     oid, mid, to, subject, body, reply = row
     files = [(n, t, bytes(d)) for n, t, d in tx(c,
         "select filename, content_type, data from public.outbox_files where outbox_id = :o order by position", o=oid)]
+    if to == mailer.REVIEWER:              # reply drafts go to the reviewer (11/18: Ibrahim), never to a client
+        to = os.environ.get("EV_DRAFT_TO") or mailer.SELF
     to = evenv.need("EV_FROM_EMAIL") if to == mailer.SELF else to
     msg = mailer.build(to, subject, body, reply, files, message_id=mid)
     if DRY:
