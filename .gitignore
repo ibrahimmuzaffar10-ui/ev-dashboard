@@ -12,6 +12,8 @@
 !docs/ROADMAP.md
 !docs/OPERATIONS.md
 !docs/HOSTING.md
+!docs/SECURITY.md
+!docs/RETENTION.md
 
 !evenv.py
 !db.py
