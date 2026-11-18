@@ -1,6 +1,8 @@
-# Data retention — Emanant HQ (proposal, nothing automated)
+# Data retention — Emanant HQ
 
-**Status: proposal for Ibrahim to decide. Nothing is erased automatically, and nothing will be until he says so.**
+**Decision (Ibrahim, 2026-11-18): keep everything, across the board.** Client names and phone numbers stay so past clients
+and leads can be contacted later (e.g. for surveys). Nothing is erased or anonymized. **Revisit in November 2028**;
+the rules below are the option to consider then, not something in effect.
 Not legal advice; confirm the numbers with an accountant/attorney.
 
 ## Why have a policy at all
@@ -8,7 +10,7 @@ Keeping client details forever means more to lose in a breach (see `docs/SECURIT
 losing what the business needs: tax records, contract proof, and booking stats. The middle ground is to keep the
 **numbers** and remove the **personal details** once they are no longer useful.
 
-## Proposed rules
+## Option for the 2028 review (not in effect)
 
 | Data | Keep for | Then |
 |---|---|---|
@@ -22,5 +24,3 @@ losing what the business needs: tax records, contract proof, and booking stats. 
 A yearly, **manual** step (e.g. every January): a script lists what qualifies, Ibrahim reviews the list, then
 confirms. Before anything changes, a full backup is taken and kept separately. No automatic schedule.
 
-## Decision needed
-1. Keep everything as-is (today's behavior), **or** adopt the rules above with the yearly manual review?

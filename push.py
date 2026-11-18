@@ -39,10 +39,13 @@ def send(title, body, url="/inbox", tag=None):
         if not subs:
             return 0
         vapid = _vapid()
-        claims = {"sub": os.environ.get("EV_VAPID_SUBJECT", "https://emanant-hq-web.vercel.app")}
+        claims = {"sub": os.environ.get("EV_VAPID_SUBJECT", "https://emanantvisuals-hq.vercel.app")}
         data = json.dumps({"title": str(title)[:120], "body": str(body)[:240], "url": url, "tag": tag}, ensure_ascii=False)
         ok = 0
         for sid, endpoint, p256dh, auth in subs:
+            # the test database is a copy of the live one, real phones included: tests may only reach a local fake
+            if os.environ.get("EV_TEST_DB") == "1" and not str(endpoint).startswith("http://127.0.0.1:"):
+                continue
             try:
                 webpush({"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}}, data,
                         vapid_private_key=vapid, vapid_claims=dict(claims), ttl=24 * 3600, timeout=10)

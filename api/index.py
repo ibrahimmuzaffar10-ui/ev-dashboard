@@ -19,7 +19,7 @@ SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 ANON = os.environ.get("SUPABASE_ANON_KEY", "")
 WRITES = os.environ.get("EV_CLOUD_WRITES") == "1"
 PAGES = ("/", "/index.html", "/calendar")
-NEW_APP = os.environ.get("EV_NEW_APP_URL", "https://emanant-hq-web.vercel.app")
+NEW_APP = os.environ.get("EV_NEW_APP_URL", "https://emanantvisuals-hq.vercel.app")
 _seen = {}                                    # sha256(token) -> (valid until, user id, allowed)
 
 
