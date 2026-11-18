@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import type { Facts } from "@/lib/facts";
-import { addAsLead, markDone, notALead, reopen, sendReply, type Result } from "./actions";
+import { addAsLead, draftToEman, markDone, notALead, reopen, type Result } from "./actions";
 import { draftReply } from "./draft";
 
 export type CardData = {
@@ -23,9 +23,7 @@ export function AlertCard({ a }: { a: CardData }) {
   const [mode, setMode] = useState<"" | "reply" | "lead">("");
   const first = /^[A-Za-z][A-Za-z'-]+$/.test(a.who.split(" ")[0]) ? a.who.split(" ")[0] : "there";
   const [body, setBody] = useState("");
-  const [call, setCall] = useState(false);
   const [name, setName] = useState(a.who);
-  const [armed, setArmed] = useState(false);          // Send needs two taps: no email goes out by accident
   const [handled, setHandled] = useState(false);
   const [other, setOther] = useState(false);          // "Other": type what the reply should say, Claude drafts it
   const [ask, setAsk] = useState("");
@@ -60,8 +58,8 @@ export function AlertCard({ a }: { a: CardData }) {
       {mode === "reply" && (
         <div className="mt-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <button className="btn" onClick={() => { setBody(offerCall(first)); setCall(true); setOther(false); }}>📞 Offer a call</button>
-            <button className="btn" onClick={() => { setBody(askDetails(first)); setCall(false); setOther(false); }}>✉️ Ask details</button>
+            <button className="btn" onClick={() => { setBody(offerCall(first)); setOther(false); }}>📞 Offer a call</button>
+            <button className="btn" onClick={() => { setBody(askDetails(first)); setOther(false); }}>✉️ Ask details</button>
             <button className="btn" style={other ? { background: "var(--accent-soft)" } : undefined} onClick={() => setOther(!other)}>✍️ Other</button>
           </div>
           {other && (
@@ -69,20 +67,20 @@ export function AlertCard({ a }: { a: CardData }) {
               <input value={ask} onChange={(e) => setAsk(e.target.value)} maxLength={500} placeholder="What should the reply say? e.g. ask if their dates are flexible"
                      className="w-full rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-[15px]" />
               <button className="btn btn-primary w-full" disabled={drafting || ask.trim().length < 3}
-                      onClick={() => startDraft(async () => { const r = await draftReply(a.id, ask); setMsg(r.ok ? null : r); if (r.ok && r.text) { setBody(r.text); setCall(false); setArmed(false); } })}>
+                      onClick={() => startDraft(async () => { const r = await draftReply(a.id, ask); setMsg(r.ok ? null : r); if (r.ok && r.text) { setBody(r.text); } })}>
                 {drafting ? "Writing draft…" : body ? "Rewrite draft" : "Write draft"}
               </button>
             </div>
           )}
           {body && <>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
-            <p className="text-[12px] text-[var(--muted)]">Draft only. Nothing is sent until you tap Send twice.</p>
+            <p className="text-[12px] text-[var(--muted)]">This goes only to Eman&apos;s inbox. She checks it and sends it to the client herself.</p>
             <div className="flex gap-2">
-              <button disabled={pending || body.length < 20} className="btn btn-primary flex-1" style={armed ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
-                      onClick={() => { if (!armed) { setArmed(true); setTimeout(() => setArmed(false), 5000); return; } setArmed(false); run(sendReply(a.id, "Re: " + (a.subject || "Your message"), body, call)); }}>
-                {pending ? "Sending…" : armed ? "Tap again to send now" : `Send to ${a.fromEmail}`}
+              <button disabled={pending || body.length < 20} className="btn btn-primary flex-1"
+                      onClick={() => run(draftToEman(a.id, a.subject || "Your message", body), false)}>
+                {pending ? "Emailing…" : "📧 Email draft to Eman"}
               </button>
-              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setArmed(false); setOther(false); setAsk(""); }}>Discard</button>
+              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setOther(false); setAsk(""); setMsg(null); }}>Discard</button>
             </div>
           </>}
         </div>

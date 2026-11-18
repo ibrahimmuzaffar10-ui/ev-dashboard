@@ -49,3 +49,8 @@ export async function outboxAction(id: number, action: "cancel" | "retry"): Prom
 export async function reopen(id: string, refresh = true): Promise<Result> {
   try { await oldApi("/api/alert", { id, action: "undo" }); if (refresh) revalidatePath("/inbox"); return { ok: true, msg: "Reopened" }; } catch (e) { return fail(e); }
 }
+
+// For now (Ibrahim 11/18) replies go to Eman's own inbox as a draft; she reviews it and sends it to the client herself.
+export async function draftToEman(id: string, subject: string, body: string): Promise<Result> {
+  try { await oldApi("/api/draft-to-eman", { id, subject, body }); return { ok: true, msg: "Draft emailed to Eman. Nothing was sent to the client" }; } catch (e) { return fail(e); }
+}

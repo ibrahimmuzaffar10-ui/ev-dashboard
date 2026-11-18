@@ -461,6 +461,22 @@ class H(BaseHTTPRequestHandler):
                     if al["from_email"].lower() not in w: w.append(al["from_email"].lower())
                     store(d, {"id": al["id"], "client": al.get("title", ""), "field": "email_sent", "old": None, "new": subj})
                     return self._send(200, json.dumps({"alert": al}, ensure_ascii=False))
+                if self.path == "/api/draft-to-eman":     # 11/18: the app emails Eman the draft; she sends it herself
+                    al = next((a for a in d.get("alerts", []) if a["id"] == body.get("id")), None)
+                    if not al: return self._send(404, "alert not found", "text/plain")
+                    text = str(body.get("body", "")).strip()
+                    if len(text) < 20: return self._send(400, "draft too short", "text/plain")
+                    if "[Pick one" in text: return self._send(400, "fill in the [Pick one …] part first", "text/plain")
+                    who = re.sub(r"^(New website inquiry|Email from|Possible inquiry from|Repeat inquiry from):?\s*", "", al.get("title") or "", flags=re.I).strip() or "a client"  # leak-check: allow: the app's alert titles, not client data
+                    subj = str(body.get("subject") or "Your message")[:150]
+                    note = ("Draft from Emanant HQ. NOTHING has been sent to the client.\n"
+                            f"To send it: open {who}'s email, tap Reply, paste the text between the lines, check it, and send.\n\n"
+                            "-------- copy from here --------\n\n" + text + "\n\n-------- to here --------\n\n"
+                            f"Client: {who}" + (f" <{al['from_email']}>" if al.get("from_email") else "") + f"\nTheir subject: {subj}\n")
+                    send_mail(mailer.SELF, f"Draft reply for {who}: {subj}"[:200], note)
+                    al["draft_to_eman"] = today()
+                    store(d, {"id": al["id"], "client": al.get("title", ""), "field": "draft_to_eman", "old": None, "new": subj})
+                    return self._send(200, json.dumps({"alert": al}, ensure_ascii=False))
                 if self.path == "/api/alert-meta":
                     if not self._job_ok(): return self._send(403, "local only", "text/plain")
                     changed = False
