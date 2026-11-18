@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import type { Facts } from "@/lib/facts";
 import { addAsLead, markDone, notALead, reopen, sendReply, type Result } from "./actions";
+import { draftReply } from "./draft";
 
 export type CardData = {
   id: string; kind: string; tone: string; who: string; when: string; fromEmail: string | null; leadId: string | null;
@@ -26,6 +27,9 @@ export function AlertCard({ a }: { a: CardData }) {
   const [name, setName] = useState(a.who);
   const [armed, setArmed] = useState(false);          // Send needs two taps: no email goes out by accident
   const [handled, setHandled] = useState(false);
+  const [other, setOther] = useState(false);          // "Other": type what the reply should say, Claude drafts it
+  const [ask, setAsk] = useState("");
+  const [drafting, startDraft] = useTransition();
   const f = a.facts;
   const run = (p: Promise<Result>, hide = true) => start(async () => { const r = await p; setMsg(r); if (r.ok && hide) setTimeout(() => setGone(true), 900); });
   if (gone) return null;
@@ -55,10 +59,21 @@ export function AlertCard({ a }: { a: CardData }) {
 
       {mode === "reply" && (
         <div className="mt-3 space-y-2">
-          <div className="flex gap-2">
-            <button className="btn flex-1" onClick={() => { setBody(offerCall(first)); setCall(true); }}>📞 Offer a call</button>
-            <button className="btn flex-1" onClick={() => { setBody(askDetails(first)); setCall(false); }}>✉️ Ask for details</button>
+          <div className="grid grid-cols-3 gap-2">
+            <button className="btn" onClick={() => { setBody(offerCall(first)); setCall(true); setOther(false); }}>📞 Offer a call</button>
+            <button className="btn" onClick={() => { setBody(askDetails(first)); setCall(false); setOther(false); }}>✉️ Ask details</button>
+            <button className="btn" style={other ? { background: "var(--accent-soft)" } : undefined} onClick={() => setOther(!other)}>✍️ Other</button>
           </div>
+          {other && (
+            <div className="space-y-2 rounded-xl bg-[var(--panel-2)] p-3">
+              <input value={ask} onChange={(e) => setAsk(e.target.value)} maxLength={500} placeholder="What should the reply say? e.g. ask if their dates are flexible"
+                     className="w-full rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 py-2.5 text-[15px]" />
+              <button className="btn btn-primary w-full" disabled={drafting || ask.trim().length < 3}
+                      onClick={() => startDraft(async () => { const r = await draftReply(a.id, ask); setMsg(r.ok ? null : r); if (r.ok && r.text) { setBody(r.text); setCall(false); setArmed(false); } })}>
+                {drafting ? "Writing draft…" : body ? "Rewrite draft" : "Write draft"}
+              </button>
+            </div>
+          )}
           {body && <>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-[15px] leading-snug" />
             <p className="text-[12px] text-[var(--muted)]">Draft only. Nothing is sent until you tap Send twice.</p>
@@ -67,7 +82,7 @@ export function AlertCard({ a }: { a: CardData }) {
                       onClick={() => { if (!armed) { setArmed(true); setTimeout(() => setArmed(false), 5000); return; } setArmed(false); run(sendReply(a.id, "Re: " + (a.subject || "Your message"), body, call)); }}>
                 {pending ? "Sending…" : armed ? "Tap again to send now" : `Send to ${a.fromEmail}`}
               </button>
-              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setArmed(false); }}>Discard</button>
+              <button className="btn" disabled={pending} onClick={() => { setBody(""); setMode(""); setArmed(false); setOther(false); setAsk(""); }}>Discard</button>
             </div>
           </>}
         </div>
