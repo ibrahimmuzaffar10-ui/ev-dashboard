@@ -1,10 +1,34 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { loadLeads, loadMoney, todayCT } from "@/lib/data";
+import { loadLeads, loadMoney, todayCT, type Installment, type Lead } from "@/lib/data";
+import { ledger, type Ledger } from "@/lib/money";
 import { Empty, Pill, Section, day, daysFrom, money, serviceLabel } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
 import { Match, Unsort } from "./match";
 import { MoneyTabs } from "./tabs";
+
+type Row = { l: Lead; g: Ledger; next?: Installment; first: string | null };
+function BookingList({ rows, today }: { rows: Row[]; today: string }) {
+  return (
+    <ul className="card divide-y divide-[var(--line)]">
+      {rows.map(({ l, g, next, first }) => {
+        const late = !!next?.due && daysFrom(today, next.due) < 0;
+        return (
+          <li key={l.id}><Link href={`/leads/${l.id}`} className="block px-4 py-3">
+            <div className="flex items-baseline justify-between gap-2"><span className="truncate font-medium">{l.client}</span><span className="shrink-0 text-sm text-[var(--muted)]">{first ? day(first, { month: "short", day: "numeric", year: "2-digit" }) : ""}</span></div>
+            <div className="mt-1 grid grid-cols-3 text-[13px]">
+              <span><span className="text-[var(--muted)]">Total </span>{g.total === null ? "not set" : money(g.total)}</span>
+              <span><span className="text-[var(--muted)]">Paid </span>{money(g.paid)}</span>
+              <span className="text-right" style={{ color: g.complete ? "var(--green)" : late ? "var(--red)" : "var(--ink)" }}>{g.complete ? (g.tip > 0 ? `Paid · +${money(g.tip)} tip` : "Paid in full") : g.total === null ? "—" : `${money(g.left)} left`}</span>
+            </div>
+            {g.total !== null && !g.complete && g.paid > 0 && <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--panel-2)]" aria-hidden><div className="h-full rounded-full" style={{ width: `${Math.min(100, (g.paid / g.total) * 100)}%`, background: "var(--chart-3)" }} /></div>}
+            {next && <div className="mt-1 text-[12px]" style={{ color: late ? "var(--red)" : "var(--muted)" }}>Next: {money(next.amount)}{next.due ? ` · ${late ? "was due" : "due"} ${day(next.due)}` : ""}</div>}
+          </Link></li>
+        );
+      })}
+    </ul>
+  );
+}
 
 async function Money() {
   const today = await todayCT();
@@ -23,25 +47,30 @@ async function Money() {
   const booked = leads.filter((l) => ["booked", "completed"].includes(l.status) && l.days.some((d) => d.day?.startsWith(year)));
   const unmatched = pays.filter((p) => !p.leadId && !p.otherIncome);
   const other = pays.filter((p) => p.otherIncome);
-  const bookings = leads.filter((l) => ["booked", "completed"].includes(l.status) && (l.total || 0) > 0).map((l) => {
+  const bookings = leads.filter((l) => ["booked", "completed"].includes(l.status) && ((l.total || 0) > 0 || pays.some((p) => p.leadId === l.id))).map((l) => {
     const plan = inst.filter((i) => i.leadId === l.id);
-    const paid = l.paid ?? plan.filter((i) => i.paid).reduce((a, b) => a + b.amount, 0);
+    const g = ledger(l, pays);
     const next = plan.filter((i) => !i.paid).sort((a, b) => (a.due || "9").localeCompare(b.due || "9"))[0];
     const d = l.days.find((x) => x.day);
     const first = l.days.map((x) => x.day).filter(Boolean).sort()[0] || null;
-    return { l, paid, left: Math.max(0, (l.total || 0) - paid), next, first, what: d?.label || serviceLabel(l.service) };
+    return { l, g, next, first, what: d?.label || serviceLabel(l.service) };
   });
-  // the Match dropdown: bookings that still owe money (they leave the list once paid in full); labels tell same-name
-  // clients apart with the event and its date
-  const owing = bookings.filter((b) => b.left > 0.005).sort((a, b) => (a.first || "9999").localeCompare(b.first || "9999"))
-    .map((b) => ({ id: b.l.id, label: [b.l.client, b.what, b.first ? day(b.first, { month: "short", day: "numeric", year: "numeric" }) : null, `${money(b.left)} left`].filter(Boolean).join(" · ") }));
+  // three groups: nothing paid yet (top) · partly paid · paid in full (bottom, folded); soonest event first
+  const soonest = (a: { first: string | null }, b: { first: string | null }) => (a.first || "9999").localeCompare(b.first || "9999");
+  const unpaid = bookings.filter((b) => !b.g.complete && b.g.paid <= 0.005).sort(soonest);
+  const partly = bookings.filter((b) => !b.g.complete && b.g.paid > 0.005).sort(soonest);
+  const full = bookings.filter((b) => b.g.complete).sort((a, b) => (b.first || "").localeCompare(a.first || ""));
+  // the Match dropdown: bookings that still owe money or have no total yet (they leave the list once paid in full);
+  // labels tell same-name clients apart with the event and its date
+  const owing = [...unpaid, ...partly]
+    .map((b) => ({ id: b.l.id, label: [b.l.client, b.what, b.first ? day(b.first, { month: "short", day: "numeric", year: "numeric" }) : null, b.g.total === null ? "total not set" : `${money(b.g.left)} left`].filter(Boolean).join(" · ") }));
   const recent = pays.filter((p) => p.leadId).slice(0, 12);
   return (
     <>
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <div className="card p-4"><div className="text-[12px] text-[var(--muted)]">Received this month</div><div className="text-2xl font-semibold tabular-nums">{money(thisMonth)}</div></div>
         <div className="card p-4"><div className="text-[12px] text-[var(--muted)]">Received in {year}</div><div className="text-2xl font-semibold tabular-nums">{money(thisYear)}</div></div>
-        <div className="card p-4"><div className="text-[12px] text-[var(--muted)]">Still to collect</div><div className="text-2xl font-semibold tabular-nums">{money(bookings.reduce((a, b) => a + b.left, 0))}</div></div>
+        <div className="card p-4"><div className="text-[12px] text-[var(--muted)]">Still to collect</div><div className="text-2xl font-semibold tabular-nums">{money(bookings.reduce((a, b) => a + b.g.left, 0))}</div></div>
         <div className="card p-4"><div className="text-[12px] text-[var(--muted)]">{year} bookings</div><div className="text-2xl font-semibold tabular-nums">{booked.length}</div></div>
       </div>
 
@@ -76,23 +105,15 @@ async function Money() {
         </Section>
       ))}
 
-      <Section title="Bookings">
-        {bookings.length ? (
-          <ul className="card divide-y divide-[var(--line)]">
-            {[...bookings].sort((a, b) => (b.first || "").localeCompare(a.first || "")).map(({ l, paid, left, next, first }) => (
-              <li key={l.id}><Link href={`/leads/${l.id}`} className="block px-4 py-3">
-                <div className="flex items-baseline justify-between gap-2"><span className="truncate font-medium">{l.client}</span><span className="text-sm text-[var(--muted)]">{first ? day(first, { month: "short", day: "numeric", year: "2-digit" }) : ""}</span></div>
-                <div className="mt-1 grid grid-cols-3 text-[13px]">
-                  <span><span className="text-[var(--muted)]">Total </span>{money(l.total)}</span>
-                  <span><span className="text-[var(--muted)]">Paid </span>{money(paid)}</span>
-                  <span className="text-right" style={{ color: left ? (next?.due && daysFrom(today, next.due) < 0 ? "var(--red)" : "var(--ink)") : "var(--green)" }}>{left ? `${money(left)} left` : "Paid in full"}</span>
-                </div>
-                {next && <div className="text-[12px] text-[var(--muted)]">Next: {money(next.amount)}{next.due ? ` · ${day(next.due)}` : ""}</div>}
-              </Link></li>
-            ))}
-          </ul>
-        ) : <Empty>No bookings with a total yet.</Empty>}
-      </Section>
+      {unpaid.length > 0 && <Section title={`Nothing paid yet (${unpaid.length})`}><BookingList rows={unpaid} today={today} /></Section>}
+      {partly.length > 0 && <Section title={`Partly paid (${partly.length} · ${money(partly.reduce((a, b) => a + b.g.left, 0))} left)`}><BookingList rows={partly} today={today} /></Section>}
+      {!bookings.length && <Section title="Bookings"><Empty>No bookings with a total yet.</Empty></Section>}
+      {full.length > 0 && (
+        <details className="mt-6">
+          <summary className="cursor-pointer px-1 text-[13px] font-semibold uppercase tracking-wide text-[var(--muted)]">Paid in full ({full.length} · {money(full.reduce((a, b) => a + b.g.paid, 0))})</summary>
+          <div className="mt-2"><BookingList rows={full} today={today} /></div>
+        </details>
+      )}
 
       {personal.length > 0 && (
         <details className="mt-6">

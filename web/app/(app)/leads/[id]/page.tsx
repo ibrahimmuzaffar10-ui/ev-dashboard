@@ -5,10 +5,9 @@ import { loadDocs, loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Section, StatusPill, day, daysFrom, money } from "@/components/ui";
 import { serviceLabel } from "@/components/ui";
 import { Skeleton } from "@/components/page-title";
+import { ledger } from "@/lib/money";
 import { Editor } from "./editor";
 import { PlanEditor } from "./plan";
-
-
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,6 +17,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   if (!l) notFound();
   const plan = inst.filter((i) => i.leadId === id);
   const got = pays.filter((p) => p.leadId === id);
+  const g = ledger(l, pays);
   return (
     <>
       <div className="pt-3"><Link href="/leads" className="text-sm font-medium text-[var(--accent)]">‹ Leads</Link></div>
@@ -46,17 +46,44 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
       <Section title="Details"><Editor lead={l} /></Section>
 
       {(l.status === "booked" || l.status === "completed" || plan.length > 0 || got.length > 0) && (
-        <Section title="Payments">
-          <ul className="card divide-y divide-[var(--line)]">
-            <PlanEditor id={l.id} items={plan.map((i) => ({ ...i, overdue: !i.paid && !!i.due && daysFrom(today, i.due) < 0, dueText: i.paid ? `Paid ${day(i.paidOn)}` : i.due ? `Due ${day(i.due)}` : "No date" }))} />
-            {got.map((p, k) => (
-              <li key={"p" + k} className="flex items-center justify-between px-4 py-3">
-                <div><div className="font-medium">Received{p.method ? ` · ${p.method}` : ""}</div><div className="text-sm text-[var(--muted)]">{day(p.on)}</div></div>
-                <div className="font-semibold tabular-nums" style={{ color: "var(--green)" }}>{money(p.amount)}</div>
-              </li>
-            ))}
-          </ul>
-        </Section>
+        <>
+          <Section title="Payments">
+            <div className="card mb-2.5 grid grid-cols-3 gap-2 p-4 text-center">
+              <div><div className="text-[12px] text-[var(--muted)]">Total</div><div className="font-semibold tabular-nums">{g.total === null ? "Not set" : money(g.total)}</div></div>
+              <div><div className="text-[12px] text-[var(--muted)]">Received</div><div className="font-semibold tabular-nums">{money(g.paid)}</div></div>
+              <div><div className="text-[12px] text-[var(--muted)]">{g.tip > 0 ? "Tip" : g.complete ? "Status" : "Left"}</div>
+                <div className="font-semibold tabular-nums" style={{ color: g.complete ? "var(--green)" : "var(--ink)" }}>{g.tip > 0 ? `+${money(g.tip)}` : g.complete ? "Paid in full" : g.total === null ? "—" : money(g.left)}</div></div>
+              {g.total !== null && <div className="col-span-3 mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--panel-2)]" aria-hidden><div className="h-full rounded-full" style={{ width: `${Math.min(100, (g.paid / g.total) * 100)}%`, background: g.complete ? "var(--chart-1)" : "var(--chart-3)" }} /></div>}
+            </div>
+            <div className="mb-1 px-1 text-[12px] font-semibold uppercase tracking-wide text-[var(--muted)]">Plan</div>
+            <ul className="card divide-y divide-[var(--line)]">
+              <PlanEditor id={l.id} items={plan.map((i) => ({ ...i, overdue: !i.paid && !!i.due && daysFrom(today, i.due) < 0, dueText: i.paid ? `Paid ${i.paidOn ? day(i.paidOn) : ""}`.trim() : i.due ? `Due ${day(i.due)}` : "No date" }))} />
+            </ul>
+          </Section>
+          <Section title="Payment history">
+            {g.entries.length || g.untracked ? (
+              <ol className="card divide-y divide-[var(--line)]">
+                {g.untracked > 0 && (
+                  <li className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0"><div className="font-medium">Earlier payments</div><div className="text-[13px] text-[var(--muted)]">Marked paid, no Zelle on file (cash, other app, or before tracking)</div></div>
+                    <div className="text-right"><div className="font-semibold tabular-nums">{money(g.untracked)}</div></div>
+                  </li>
+                )}
+                {g.entries.map((p, k) => (
+                  <li key={k} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">{day(p.on, { month: "short", day: "numeric", year: "numeric" })}{p.method ? <span className="font-normal text-[var(--muted)]"> · {p.method}</span> : null}</div>
+                      <div className="truncate text-[13px] text-[var(--muted)]">{p.sender ? `from ${p.sender}` : "Payment"}{g.total !== null ? ` · ${money(p.running)} of ${money(g.total)}` : ` · ${money(p.running)} so far`}</div>
+                      {p.fullHere && <span className="chip mt-1 font-medium" style={{ background: "var(--green-bg)", color: "var(--green)" }}>✓ Paid in full here</span>}
+                    </div>
+                    <div className="font-semibold tabular-nums" style={{ color: "var(--green)" }}>{money(p.amount)}</div>
+                  </li>
+                ))}
+                {g.tip > 0 && <li className="flex items-center justify-between px-4 py-3 text-[14px]"><span className="text-[var(--muted)]">Extra above the total (tip)</span><span className="font-semibold tabular-nums" style={{ color: "var(--green)" }}>+{money(g.tip)}</span></li>}
+              </ol>
+            ) : <div className="card px-4 py-3 text-[14px] text-[var(--muted)]">No payments received yet.</div>}
+          </Section>
+        </>
       )}
 
       {docs.length > 0 && (

@@ -3,9 +3,10 @@ import { loadLeads, loadMoney, todayCT } from "@/lib/data";
 import { Empty, Section, money } from "@/components/ui";
 import { PageTitle, Skeleton } from "@/components/page-title";
 import { BarChart, type Bar } from "@/components/charts";
+import { monthSplit } from "@/lib/money";
 import { MoneyTabs } from "../tabs";
 
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];  // for the stat tiles
 function months(from: string, count: number) {          // "YYYY-MM" keys starting at `from`
   const [y, m] = from.split("-").map(Number);
   return Array.from({ length: count }, (_, i) => { const d = new Date(Date.UTC(y, m - 1 + i, 1)); return d.toISOString().slice(0, 7); });
@@ -26,22 +27,28 @@ async function Progress() {
     const m = new Map<string, number>(); for (const x of xs) { const k = key(x); if (k) m.set(k, (m.get(k) || 0) + val(x)); } return m;
   };
   const received = sumBy(pays, (p) => p.on?.slice(0, 7), (p) => p.amount);
+  const split = monthSplit(leads, pays);
   const scheduled = sumBy(inst.filter((i) => !i.paid && i.due), (i) => (i.due! < today ? ym : i.due!.slice(0, 7)), (i) => i.amount);  // overdue counts as this month
-  // money: 9 months back · this month · 6 months ahead
-  const mKeys = months(shift(ym, -9), 16);
-  const moneyBars: Bar[] = mKeys.map((k) => ({ label: MON[Number(k.slice(5)) - 1], sub: k.slice(0, 4), a: Math.round(k <= ym ? received.get(k) || 0 : 0), b: Math.round(k >= ym ? scheduled.get(k) || 0 : 0) }));
-  // inquiries vs bookings by the month they inquired (last 12 months)
-  const iKeys = months(shift(ym, -11), 12);
+  // money: from the first payment on file (at least 12 months back) through 6 months ahead; swipe for older months
+  const firstPay = [...received.keys()].sort()[0] || ym;
+  const start = firstPay < shift(ym, -11) ? firstPay : shift(ym, -11);
+  const span = (from: string, to: string) => { let n = 0; for (let k = from; k <= to; k = shift(k, 1)) n++; return n; };
+  const mKeys = months(start, span(start, shift(ym, 6)));
+  const moneyBars: Bar[] = mKeys.map((k) => { const m = split.get(k) || { full: 0, partial: 0 }; return { ym: k, v: [Math.round(m.full), Math.round(m.partial), Math.round(k >= ym ? scheduled.get(k) || 0 : 0)] }; });
+  // inquiries vs bookings by the month they inquired
+  const firstInq = leads.map((l) => l.inquiry?.slice(0, 7)).filter(Boolean).sort()[0] as string | undefined;  // leak-check: allow: the app field name "inquiry", not client data
+  const iStart = firstInq && firstInq < shift(ym, -11) ? firstInq : shift(ym, -11);
+  const iKeys = months(iStart, span(iStart, ym));
   const inq = sumBy(leads, (l) => l.inquiry?.slice(0, 7), () => 1);  // leak-check: allow: the app field name "inquiry", not client data
   const won = sumBy(leads.filter((l) => ["booked", "completed"].includes(l.status)), (l) => l.inquiry?.slice(0, 7), () => 1);  // leak-check: allow: the app field name "inquiry", not client data
-  const funnelBars: Bar[] = iKeys.map((k) => ({ label: MON[Number(k.slice(5)) - 1], sub: k.slice(0, 4), a: inq.get(k) || 0, b: won.get(k) || 0 }));
+  const funnelBars: Bar[] = iKeys.map((k) => ({ ym: k, v: [inq.get(k) || 0, won.get(k) || 0] }));
   // headline numbers
   const ytd = [...received].filter(([k]) => k.startsWith(year)).reduce((a, [, v]) => a + v, 0);
   const lastYearSame = [...received].filter(([k]) => k.startsWith(String(Number(year) - 1)) && k.slice(5) <= ym.slice(5)).reduce((a, [, v]) => a + v, 0);
   const best = [...received].sort((a, b) => b[1] - a[1])[0];
   const monthsSoFar = Number(ym.slice(5));
   const ahead = [...scheduled].filter(([k]) => k >= ym).reduce((a, [, v]) => a + v, 0);
-  const inq12 = funnelBars.reduce((a, b) => a + b.a, 0), won12 = funnelBars.reduce((a, b) => a + (b.b || 0), 0);
+  const last12 = funnelBars.slice(-12), inq12 = last12.reduce((a, b) => a + b.v[0], 0), won12 = last12.reduce((a, b) => a + b.v[1], 0);
   return (
     <>
       <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -51,11 +58,13 @@ async function Progress() {
         <Stat k="Booking rate (12 months)" v={inq12 ? `${Math.round((won12 / inq12) * 100)}%` : "—"} s={`${won12} booked of ${inq12} inquiries`} />{/* leak-check: allow: the app word "inquiry", not client data */}
       </div>
       <Section title="Money by month">
-        <BarChart title="Money in" kind="money-stack" legend={["Received", "Scheduled"]} bars={moneyBars} highlight={9}
-                  note="Solid = Zelle/payments received. Dashed = installments still due (overdue ones count in this month)." />
+        <BarChart title="Money in" layout="stack" money focus={mKeys.indexOf(ym)} bars={moneyBars}
+                  series={[{ name: "Paid in full that month", color: "var(--chart-1)" }, { name: "Partial payments", color: "var(--chart-3)" }, { name: "Scheduled", color: "var(--chart-1)", dashed: true }]}
+                  note="Each payment counts in the month it arrived, not the event month. Green: the booking was paid off that month (all at once, or its last payment). Gold: a deposit or installment toward a booking still being paid off. Dashed: installments still due. Tap a color for its amount, or the month for its total; tap a client in Money to see every payment." />
       </Section>
       <Section title="Inquiries and bookings">{/* leak-check: allow: the app word "inquiry", not client data */}
-        <BarChart title="By the month they inquired" kind="pair" legend={["Inquiries", "Booked"]} bars={funnelBars} highlight={11} />{/* leak-check: allow: the app word "inquiry", not client data */}
+        <BarChart title="By the month they inquired" layout="pair" money={false} focus={iKeys.length - 1} bars={funnelBars}
+                  series={[{ name: "Inquiries", color: "var(--chart-2)" }, { name: "Booked", color: "var(--chart-1)" }]} />{/* leak-check: allow: the app word "inquiry", not client data */}
       </Section>
     </>
   );
