@@ -34,6 +34,20 @@ def parse(t):
     memo = re.search(r"Memo\s*:?\s*(.{0,80}?)(?:\s{2,}|Amount|Sent on|Transaction|$)", t)
     return (float(amt.group(1).replace(",", "")) if amt else None, who.group(1).strip() if who else "", (memo.group(1).strip() if memo else ""))
 
+def apply_to_plan(email_id, lead_id):
+    """A matched Zelle for a booking with a payment plan: credit it through the Mac server's /api/payment-apply
+    (marks the deposit / next installments paid, updates paid + balance, links the payment). False = not applied;
+    the caller then only links it, as before (it can still be applied by hand from "To match" after an undo)."""
+    import urllib.request
+    port = os.environ.get("EV_PORT", "8787")
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/payment-apply", data=json.dumps({"email_id": email_id, "lead_id": lead_id}).encode(),
+                                 headers={"Content-Type": "application/json", "Host": f"127.0.0.1:{port}"})
+    try:
+        urllib.request.urlopen(req, timeout=30).read(); return True
+    except Exception as ex:
+        print("apply skipped:", ex); return False
+
+
 def main():
     pays = db.payments_all()
     ids = db.doc_read("zelle_ids") or {}            # mailbox number -> Message-ID, for older payments
@@ -59,8 +73,10 @@ def main():
         for p in pays:
             if p.get("lead_id") or p.get("personal") or p.get("other_income"): continue      # sorted payments are never auto-matched
             pt = toks(p["sender"])
-            cands = [l for l in leads if pt and len(pt & toks(l["client"])) >= min(2, len(pt))]
-            if len(cands) == 1: p["_match"] = (cands[0]["id"], cands[0]["client"])
+            # the lead name plus the names on its contract (a lead named after a planner still matches the client)
+            names = lambda l: l["client"] + " " + ((l.get("contract_terms") or {}).get("fields") or {}).get("client_names", "")
+            cands = [l for l in leads if pt and len(pt & toks(names(l))) >= min(2, len(pt))]
+            if len(cands) == 1: p["_match"] = (cands[0]["id"], cands[0]["client"], bool(cands[0].get("schedule")))
     except Exception as ex:
         print("match skipped:", ex)
     # 11/18: add only the new payments, then link matches one row at a time (re-checked under the lock), so a payment
@@ -68,7 +84,9 @@ def main():
     db.payments_add([{k: v for k, v in p.items() if k != "_match"} for p in new])
     for p in pays:
         if p.get("_match"):
-            lid, client = p["_match"]
+            lid, client, has_plan = p["_match"]
+            if has_plan and apply_to_plan(p["email_id"], lid):
+                continue           # credited to the payment plan (deposit/installments marked paid) and linked
             def link(x, lid=lid, client=client):
                 if not x.get("lead_id") and not x.get("personal") and not x.get("other_income"):
                     x["lead_id"] = lid; x["client"] = client

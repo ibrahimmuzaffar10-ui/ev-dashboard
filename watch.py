@@ -300,6 +300,8 @@ def main():
             def score(l):
                 sc = 0
                 if l.get("src_email") and l["src_email"].lower() in hay: sc += 5
+                ce = (l["contract_terms"].get("fields") or {}).get("client_email", "").strip().lower()
+                if ce and ce != (l.get("src_email") or "").lower() and ce in hay: sc += 5
                 toks = set(re.findall(r"[a-z]{3,}", (l["client"] + " " + l["contract_terms"]["fields"].get("client_names", "")).lower())) - {"and", "the", "via"}
                 sc += sum(1 for x in toks if x in hay)
                 return sc

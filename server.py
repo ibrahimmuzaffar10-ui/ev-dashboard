@@ -124,6 +124,12 @@ def build_fill(terms):
         q = datetime.date.fromisoformat(days[0]["date"]) - datetime.timedelta(days=28); f["questionnaire_due"] = pretty(q.isoformat())
     f["coverage_rows"] = [[str(i), d.get("event", ""), pretty(d.get("date")), d.get("start", ""), d.get("end", ""), str(d.get("hours", ""))] for i, d in enumerate(days, 1)]
     return f
+def plan_from_terms(t, due_retainer=None):
+    """The payment plan from a contract: deposit (retainer) + the installments, all unpaid. Created when the contract
+    is sent (scripts/send_contract.py), so a deposit that arrives before the signed copy is credited to it."""
+    sched = [{"label": "Retainer (due at signing)", "due": due_retainer or today(), "amount": t.get("retainer"), "paid": False}] if t.get("retainer") else []
+    sched += [{"label": p["label"], "due": p.get("due", ""), "amount": p.get("amount"), "paid": False} for p in t.get("plan", []) if p.get("amount")]
+    return sched
 def activate_signed(d, lead, pdf_bytes=None):
     """Contract signed: payment plan goes live, signed copy filed, questionnaire prepared and emailed to Eman."""
     t = lead.get("contract_terms") or {}
@@ -133,9 +139,7 @@ def activate_signed(d, lead, pdf_bytes=None):
     if t:
         lead["total"] = t.get("total")
         if not lead.get("schedule"):
-            sched = [{"label": "Retainer (due at signing)", "due": today(), "amount": t.get("retainer"), "paid": False}] if t.get("retainer") else []
-            sched += [{"label": p["label"], "due": p.get("due", ""), "amount": p.get("amount"), "paid": False} for p in t.get("plan", []) if p.get("amount")]
-            lead["schedule"] = sched
+            lead["schedule"] = plan_from_terms(t)
         if lead.get("retainer") not in ("paid", "partial"): lead["retainer"] = "unpaid"
         lead["balance"] = "due"
         name = doc_name(t); t["signed_on"] = today()

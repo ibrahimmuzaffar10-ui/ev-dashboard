@@ -4,7 +4,8 @@ first name, event, date, deposit, link and sign-by date change.
 
     .venv/bin/python scripts/send_contract.py L110 https://docuseal.com/s/XXXX [--dry-run]
 
-Marks the lead's contract as "sent" and keeps the link on the contract record. Run with EV_BACKEND=supabase.
+Marks the lead's contract as "sent", keeps the link on the contract record and puts the payment plan on the books
+(deposit due by the sign-by date), so a matching Zelle is credited automatically. Run with EV_BACKEND=supabase.
 """
 import argparse, datetime, os, sys, threading
 
@@ -68,6 +69,10 @@ def main():
             return
         t["docuseal_link"] = a.link; t["sent_on"] = evtime.today_ct().isoformat()
         lead["contract"] = "sent"
+        if not lead.get("schedule"):         # payment plan goes on the books now, so an early deposit is credited to it
+            import server
+            lead["schedule"] = server.plan_from_terms(t, t["sign_by"])
+            if lead.get("retainer") not in ("paid", "partial"): lead["retainer"] = "unpaid"
         lead["action_note"] = f"{evtime.today_ct().isoformat()}: contract link emailed to the client; waiting for signature + deposit."
         db.outbox_enqueue(to, subject, body)       # joins this save's transaction: queued only if the save commits
         db.store(d)
