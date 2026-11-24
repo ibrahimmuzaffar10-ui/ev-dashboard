@@ -34,6 +34,9 @@ def parse(t):
     memo = re.search(r"Memo\s*:?\s*(.{0,80}?)(?:\s{2,}|Amount|Sent on|Transaction|$)", t)
     return (float(amt.group(1).replace(",", "")) if amt else None, who.group(1).strip() if who else "", (memo.group(1).strip() if memo else ""))
 
+TRASH = "Deleted Messages"
+
+
 def apply_to_plan(email_id, lead_id):
     """A matched Zelle for a booking with a payment plan: credit it through the Mac server's /api/payment-apply
     (marks the deposit / next installments paid, updates paid + balance, links the payment). False = not applied;
@@ -65,6 +68,27 @@ def main():
         amount, sender, memo = parse(body_text(raw))
         p = {"email_id": mid or e["id"], "date": e["date"][:10], "amount": amount, "sender": sender, "memo": memo, "method": "Zelle (Chase)", "lead_id": None}
         pays.append(p); new.append(p); seen.add(p["email_id"])
+    # Eman often deletes the Chase emails: read Deleted Messages too. Its message numbers are a different series than
+    # the Inbox's, so only the permanent Message-ID counts as "seen" there. Older payments saved under an Inbox number
+    # (no Message-ID learned yet) are matched by date + amount + sender, one record per email, so a payment already on
+    # the books is never imported twice, while two real same-day payments of the same amount both count.
+    import collections
+    legacy = collections.Counter((str(p.get("date"))[:10], float(p.get("amount") or 0), (p.get("sender") or "").upper())
+                                 for p in pays if str(p.get("email_id", "")).isdigit() and str(p.get("email_id")) not in ids)
+    try:
+        denv = hj("envelope", "search", "-m", TRASH, "-s", "500", f'from {SENDER} and subject "You received money with Zelle" order by date desc')["envelopes"]
+    except SystemExit as ex:
+        print("deleted folder skipped:", ex); denv = []
+    for e in denv:
+        mid = e.get("message-id") or ""
+        if not mid or mid in seen: continue
+        raw = subprocess.run(["himalaya", "message", "read", "--raw", "-m", TRASH, e["id"]], capture_output=True, timeout=120).stdout
+        amount, sender, memo = parse(body_text(raw))
+        key = (e["date"][:10], float(amount or 0), (sender or "").upper())
+        if legacy[key] > 0:                     # already on the books under its old Inbox number
+            legacy[key] -= 1; seen.add(mid); continue
+        p = {"email_id": mid, "date": e["date"][:10], "amount": amount, "sender": sender, "memo": memo, "method": "Zelle (Chase)", "lead_id": None}
+        pays.append(p); new.append(p); seen.add(mid)
     pays.sort(key=lambda p: p["date"], reverse=True)
     # auto-match payer name to a lead (unique full-name token match); leave unmatched for review
     try:
