@@ -160,9 +160,16 @@ class handler(server.H):
                 files = server.render(kind, server.build_fill(terms), os.path.join(d, "TEST " + kind))
                 out[kind] = {os.path.splitext(f)[1]: os.path.getsize(f) for f in files}
                 out[kind]["text_sha256"] = selftest_text_sha([f for f in files if f.endswith(".docx")][0])
+                if kind == "contract":     # the representative (EV_REP_NAME) must print + pre-sign every contract
+                    import re, zipfile
+                    with zipfile.ZipFile([f for f in files if f.endswith(".docx")][0]) as z:
+                        txt = re.sub(r"<[^>]+>", "", z.read("word/document.xml").decode("utf-8"))
+                    rep = os.environ.get("EV_REP_NAME", "").strip()
+                    out[kind]["rep_signed"] = bool(rep) and txt.count(rep) >= 2      # printed name + cursive signature
             except Exception as ex:
                 out[kind] = {"error": str(ex)[:300]}
         ok = all(isinstance(v, dict) and v.get(".pdf", 0) > 1000 and v.get(".docx", 0) > 1000 for v in out.values())
+        ok = ok and out.get("contract", {}).get("rep_signed") is True
         return self._send(200 if ok else 500, json.dumps({"ok": ok, "python": sys.version.split()[0], "render": out}))
 
     def _keepalive(self):
