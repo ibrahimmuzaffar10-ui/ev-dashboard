@@ -14,6 +14,12 @@ if FILL:  # substitute client values; in "lines" blocks mark them ⟪v⟫ so the
             v = str(FILL.get(m.group(1), "") or "").strip()
             return (f"⟪{v}⟫" if mark else v) if v else m.group(0)
         return re.sub(r"\{\{([^}]+)\}\}", rep, x)
+    # deliverables written out in full ("125+ fully edited images · 1 roll of film") replace the "N+ edited images" pattern
+    if re.search(r"[A-Za-z]", str(FILL.get("image_estimate") or "")):
+        def _deliv(x):
+            if isinstance(x, list): return [_deliv(i) for i in x]
+            return x.replace("{{image_estimate}}+ edited images", "{{image_estimate}}")
+        SECTIONS = [(h, tg, [(k, _deliv(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
     SECTIONS = [(h, tg, [(k, _sub(c, k == "lines"), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
     # privacy: tick the chosen box on the "Selected:" line (no tier chosen = standard usage)
     _pk = str(FILL.get("privacy_option") or "Standard usage").split("(")[0].strip().lower()
