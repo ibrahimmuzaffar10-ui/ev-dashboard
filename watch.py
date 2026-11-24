@@ -17,6 +17,7 @@ import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 API = os.environ.get("EV_API", "http://127.0.0.1:8787")         # the dashboard server on this Mac
+FULL = 3000        # characters of an email kept on its alert, so the whole message can be read in the app (Ibrahim 11/24)
 SHADOW = os.environ.get("EV_SHADOW") == "1"                     # test run: no pop-ups, no Zelle import
 MAX_TRIES = 3                                                   # then a person is asked to look
 LOCK_PATH = os.path.expanduser(os.environ.get("EV_WATCH_LOCK", "~/Library/Caches/emanant-hq/watch.lock"))
@@ -321,7 +322,7 @@ def main():
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default); t = text_of(m)
             rt = getaddresses([m.get("Reply-To", "")]); cem = (rt[0][1] if rt else field(t, "email")).lower()
             cname = field(t, "name") or cem; svc = field(t, "service"); msg = field(t, "message")
-            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:600] + call_tip(svc, msg), "email_id": key, "from_email": cem, "at": when,  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            body = {"type": "new_inquiry", "title": f"New website inquiry: {cname}", "detail": f"{svc} — {msg}"[:FULL] + call_tip(svc, msg), "email_id": key, "from_email": cem, "at": when,  # leak-check: allow: the app word "inquiry" (default lead name), not client data
                     "create_lead": {"client": cname, "channel": "Website form", "src_email": cem, "notes": f"{svc}: {msg}"[:900], "event_text": ""}}
             post("/api/alert-new", body); notify("New website inquiry", f"{cname}: {svc}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         elif "chase.com" in frm and "received money" in subj.lower():
@@ -335,15 +336,17 @@ def main():
             notify("Payment received", f"${a} from {w}")
         elif frm in watching and frm not in known:
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default); t = text_of(m)
-            fresh = re.split(r"\sOn .{5,80} wrote:", t)[0][:2000]
+            fresh = re.split(r"\sOn .{5,80} wrote:", t)[0][:FULL]
             if STRICT.search(subj + " " + fresh) or INQ.search(fresh):
-                post("/api/alert-new", {"type": "possible_inquiry", "title": f"Replied with details: {name}", "detail": fresh[:500] + call_tip(subj, fresh), "email_id": key, "from_email": frm, "at": when})
+                post("/api/alert-new", {"type": "possible_inquiry", "title": f"Replied with details: {name}", "detail": fresh + call_tip(subj, fresh), "email_id": key, "from_email": frm, "at": when})
                 notify("Inquiry details received", f"{name}: {fresh[:80]}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             else:
                 post("/api/alert-new", {"type": "email", "title": f"Reply not about photography: {name}", "detail": "Auto-ignored. Reopen if this is wrong. " + fresh[:400], "email_id": key, "from_email": frm, "at": when, "done": True})
         elif frm in known:
             l = known[frm]
-            post("/api/alert-new", {"type": "client_email", "title": f"Email from {l['client']}", "detail": subj, "email_id": key, "from_email": frm, "lead_id": l["id"], "at": when})
+            m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default)
+            body = re.split(r"\sOn .{5,80} wrote:", text_of(m))[0][:FULL].strip()
+            post("/api/alert-new", {"type": "client_email", "title": f"Email from {l['client']}", "detail": (subj + " — " + body).strip(" —"), "email_id": key, "from_email": frm, "lead_id": l["id"], "at": when})
             notify("Client emailed", f"{l['client']}: {subj}")
         elif not NOISE.search(frm) and not blocked(frm):
             m = email.message_from_bytes(raw(e["id"], "Junk" if e.get("junk") else "Inbox"), policy=policy.default)
@@ -357,10 +360,10 @@ def main():
                 vague = re.search(r"\b(free|available|availability|book|booking|rates?|prices?|cost|how much|quote|interested|hire|services?)\b", subj + " " + t[:800], re.I) or \
                         re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2}/\d{1,2}\b", t[:800], re.I)
                 if not vague or len(t) > 2500 or history(frm) > 1: return "skipped"
-                post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:400]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})
+                post("/api/alert-new", {"type": "unclear", "title": f"Unclear message: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + t[:FULL]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})
                 notify("Unclear message", f"{name}: {subj or t[:60]}")
                 return "alert"
-            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + re.split(r"\sOn .{5,80} wrote:", t)[0][:600]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
+            post("/api/alert-new", {"type": "possible_inquiry", "title": f"Possible inquiry: {name}" + (" (in Junk!)" if e.get("junk") else ""), "detail": (subj + " — " + re.split(r"\sOn .{5,80} wrote:", t)[0][:FULL]).strip(" —") + call_tip(subj, t[:1500]), "email_id": key, "from_email": frm, "at": when})  # leak-check: allow: the app word "inquiry" (default lead name), not client data
             notify("Possible inquiry", f"{name}: {subj}")  # leak-check: allow: the app word "inquiry" (default lead name), not client data
         else:
             return "skipped"   # newsletter / noise / blocked sender

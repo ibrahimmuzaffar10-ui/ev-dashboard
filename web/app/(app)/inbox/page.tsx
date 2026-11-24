@@ -36,6 +36,7 @@ async function List() {
       id: a.id, kind: kind + (a.title.includes("(in Junk!)") ? " · found in Junk" : ""), tone, who: lead?.client || who, when: when(a.at, today),
       fromEmail: a.fromEmail, leadId: a.leadId, leadName: lead && lead.client !== who ? lead.client : null, subject: a.detail.split(" — ")[0].split("\n")[0].slice(0, 120),
       facts: extractFacts(a.title, a.detail), count: a.count, isPerson: !["payment", "contract_signed", "reminder"].includes(a.type),
+      full: a.detail.split("\n📞")[0].trim(),
     };
   });
   return <div className="mt-4 space-y-3">{cards.map((c) => <AlertCard key={c.id} a={c} />)}</div>;

@@ -5,7 +5,7 @@ import { addAsLead, draftToEman, markDone, notALead, reopen, type Result } from 
 
 export type CardData = {
   id: string; kind: string; tone: string; who: string; when: string; fromEmail: string | null; leadId: string | null;
-  leadName: string | null; subject: string; facts: Facts; count: number; isPerson: boolean;
+  leadName: string | null; subject: string; facts: Facts; count: number; isPerson: boolean; full: string;
 };
 
 function offerCall(first: string) {
@@ -19,6 +19,7 @@ export function AlertCard({ a }: { a: CardData }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<Result | null>(null);
   const [gone, setGone] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [mode, setMode] = useState<"" | "reply" | "lead">("");
   const first = /^[A-Za-z][A-Za-z'-]+$/.test(a.who.split(" ")[0]) ? a.who.split(" ")[0] : "there";
   const [body, setBody] = useState("");
@@ -50,7 +51,15 @@ export function AlertCard({ a }: { a: CardData }) {
         </div>
       </div>
       {chips.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>}
-      {f.excerpt && <p className="mt-3 line-clamp-3 text-[14.5px] leading-snug">{f.excerpt}</p>}
+      {f.excerpt && !showAll && <p className="mt-3 line-clamp-3 text-[14.5px] leading-snug">{f.excerpt}</p>}
+      {a.isPerson && a.full && (
+        <>
+          {showAll && <p className="mt-3 whitespace-pre-wrap break-words text-[14.5px] leading-snug">{a.full}</p>}
+          <button className="mt-2 text-[13px] font-medium text-[var(--accent)] underline-offset-2 hover:underline" onClick={() => setShowAll(!showAll)}>
+            {showAll ? "Show less" : "Show full message"}
+          </button>
+        </>
+      )}
       {f.callTip && <p className="mt-2 text-[13px] font-medium text-[var(--accent)]">They named a date: offer a quick 15-min call with Eman.</p>}
 
       {mode === "reply" && (
