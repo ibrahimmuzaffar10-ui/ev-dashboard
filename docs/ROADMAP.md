@@ -141,6 +141,41 @@ Split `schedule` + `contract_terms` into tables · custom domain `hq.emanantvisu
 
 ---
 
+## Stage 5: Instagram DMs in Emanant HQ (planned 2026-11-24, not started; Ibrahim: "very key")
+**Goal:** Business Instagram DMs come to **Ibrahim** in an Instagram tab of Emanant HQ (phone + Mac); he answers them there with personal, detail-aware drafts; every inquiry becomes a tracked lead (contract → DocuSeal → Zelle). Free (Meta's official API). Built slowly and thoroughly; **protecting Eman's account comes before every feature.**  <!-- leak-check: allow: the app word "inquiry", not client data -->
+
+**How it works when done**
+1. A DM arrives → within minutes it shows in the Instagram tab (full message). Ibrahim handles it; Eman doesn't have to.
+2. The message is read: name, event type, date(s), venue, hours; the **calendar is checked** for that date.
+3. A personal draft is written from a small set of reply styles, filled with their details. A taken date is **flagged to Ibrahim, never auto-declined**: he picks *available* / *possible second session around the existing booking* / *kind decline*.
+4. The reply is **sent now or queued with a delay**; until it goes he can edit, send now or cancel. Goal of every reply: **one clear next step** (usually a 15-min call) — Hormozi lead-nurture: speed, personalization, availability, volume.
+5. The client's answer notifies Ibrahim → he steps in (call / quote / contract). **Add as lead** links the thread to the booking.
+6. Instagram itself only needs opening when a thread's **24-hour window** has closed (outside apps may reply only within 24 h of the client's last message; one reply from the app reopens it). Each thread shows the time left.
+
+**Phases (each starts only after the previous one passes)**
+| Phase | Built | Pass/fail test |
+|---|---|---|
+| 0. Prep (Ibrahim, ~20 min) | Account is Business/Creator; 2-step login on, backup codes kept by both; free Meta developer account (he logs in himself, never shares passwords) | type confirmed, 2-step on |
+| 1. Read-only | New DMs + comments land in the Instagram tab; nothing can be sent; runs ≥1 week | 10/10 test DMs appear < 5 min, 0 missed, 0 duplicates |
+| 2. Understanding + calendar | Extract date/event/venue/hours; show bookings already on that date | 10/10 scripted messages read correctly (incl. "the 19th", "next Saturday") |
+| 3. Personal drafts | 4–6 reply styles (new inquiry, needs details, date taken / second session, follow-up, call offer), wording approved by Ibrahim, Hormozi-checked (one next step, real availability, no discounts, no fake urgency) | Ibrahim rates 10 drafts, ≥8 need no edit |  <!-- leak-check: allow: the app word "inquiry", not client data -->
+| 4. Sending | Send now / delayed queue, edit + cancel, 24-h timer, **kill switch** that stops all sending | 10/10 land in the right thread on time, 0 sent after cancel |
+| 5. Leads + numbers | Add as lead from a DM; threads linked to leads; weekly: DMs, median reply time, DM→call→booking | one test client DM → lead → contract |
+| 6. Optional hands-off | Only simple first replies send on their own after the delay; dates/prices/"booked" always wait for Ibrahim | only after weeks of clean Phase 4 AND a fresh check of Meta policy + bot-disclosure rules |
+
+**Testing:** Ibrahim messages the business account from his personal account using scripted dialogues (wedding inquiry, vague "free March 3?", taken date, ghosting, reply after 2 days). No real client is touched until Phases 1–4 pass.  <!-- leak-check: allow: the app word "inquiry", not client data -->
+
+**Account safety (non-negotiable)**
+- Meta's official Instagram API only: no password-sharing tools, scrapers or unofficial apps.
+- Low volume, human pacing, never message first, no auto-follow/like/mass DMs; replies only inside Meta's windows; a person is always behind every thread (Meta requires a human escalation path).
+- Minimum permissions (read + send messages); token stored like other secrets (never in git); 60-day token auto-renewal with an alert; kill switch.
+- Replies sent from the dashboard also appear in Eman's Instagram; threads show "handled by Ibrahim" (no double replies).
+
+**Cost:** free (Meta API + existing Vercel/Supabase/Mac). ManyChat-type tools rejected: free tier 25 contacts/month and built around canned auto-replies.
+
+**Open decisions:** account type; default delay (Hormozi: reply within 5 min; a long delay costs bookings — see note); whether Eman sees the tab; start after the current contracts and pending payment reviews are settled.
+**Note (11/24, candid review):** the 1-hour delay idea conflicts with speed-to-lead. Recommended default: business hours = send within ~5–15 min (still human-looking because the reply is specific); late night = queue for the morning.
+
 ## Decisions
 - 2026-11-16 (Ibrahim): the "roadmap officially complete" milestone (with a celebration) is declared only when Stages 1–3 are all done, not after Stage 1; then his friend rejoins for the next round of changes. Stage 4 stays optional.
 | Decision | Status |
