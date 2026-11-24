@@ -39,7 +39,7 @@ export function ContractForm({ id, client, init, days0, privacy }: {
     if (!f.client_names?.trim()) return setMsg({ ok: false, msg: "Client name(s) on the contract are required" });
     if (!num(f.total) || Number.isNaN(num(f.retainer))) return setMsg({ ok: false, msg: "Enter the total and the retainer" });
     const fields = Object.fromEntries(["client_names", "first_names", "client_phone", "client_email", "client_address", "session_type", "city_state", "locations", "day_of_contact",
-      "package_name", "image_estimate", "coverage_hours", "photographers", "inclusions", "addons", "privacy_option", "travel_fee"].map((k) => [k, (f[k] || "").trim()]));
+      "package_name", "image_estimate", "coverage_hours", "photographers", "inclusions", "addons", "privacy_option", "travel_fee"].map((k) => [k, (f[k] || (k === "privacy_option" ? privacy[0] : "")).trim()]));
     start(async () => setMsg(await createContract({ id, fields, total: num(f.total), retainer: num(f.retainer),
       days: days.filter((d) => d.date), plan: plan.filter((p) => p.amount).map((p) => ({ ...p, amount: num(p.amount) })) })));
   };

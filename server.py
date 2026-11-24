@@ -96,8 +96,18 @@ def render(kind, fill, out):
     finally:
         os.remove(tmp)
     return [out + ".pdf", out + ".docx"]
+def sign_by_date(today_, event_dates):
+    """7 days from today, unless the first event is sooner: then the day before the event (never before today)."""
+    sb = today_ + datetime.timedelta(days=7)
+    ds = sorted(datetime.date.fromisoformat(str(x)[:10]) for x in event_dates if x)
+    if ds and ds[0] - datetime.timedelta(days=1) < sb:
+        sb = max(today_, ds[0] - datetime.timedelta(days=1))
+    return sb.isoformat()
 def build_fill(terms):
     f = dict(terms["fields"]); days = terms.get("days", []); plan = terms.get("plan", [])
+    if not str(f.get("privacy_option") or "").strip(): f["privacy_option"] = "Standard usage"   # no tier picked = standard usage
+    if not str(f.get("rep_name") or "").strip(): f["rep_name"] = os.environ.get("EV_REP_NAME", "")   # Eman's side comes pre-signed
+    f["rep_presign"] = bool(str(f.get("rep_name") or "").strip())
     f["issue_date"] = pretty(terms["issue"]); f["sign_by_date"] = pretty(terms["sign_by"])
     f["event_dates"] = " · ".join(f"{pretty(d['date'])}" + (f" ({d['event']})" if d.get("event") else "") for d in days)
     if days:
@@ -415,8 +425,9 @@ class H(BaseHTTPRequestHandler):
                 if self.path == "/api/contract/create":
                     lead = next((l for l in d["leads"] if l.get("id") == body.get("id")), None)
                     if not lead: return self._send(404, "lead not found", "text/plain")
-                    issue = today(); sign_by = (evtime.today_ct() + datetime.timedelta(days=7)).isoformat()
+                    issue = today()
                     days = [x for x in body.get("days", []) if x.get("date")]
+                    sign_by = sign_by_date(evtime.today_ct(), [x["date"] for x in days])
                     plan = [x for x in body.get("plan", []) if x.get("amount") not in (None, "")]
                     for x in plan: x["amount"] = validate("total", x["amount"])
                     terms = {"fields": body.get("fields", {}), "days": days, "plan": plan, "issue": issue, "sign_by": sign_by,
@@ -430,7 +441,7 @@ class H(BaseHTTPRequestHandler):
                     store(d, {"id": lead["id"], "client": lead["client"], "field": "contract_terms", "old": None, "new": name})
                     try:
                         send_mail(FROM_EMAIL, f"[Emanant HQ] Contract draft to review: {name}",
-                                  f"Contract draft for {lead['client']} is attached (PDF to review, Word to edit).\n\nSign-by date: {pretty(sign_by)} (7 days). Create the contract on the day you send it, so the 7 days count from sending.\n\nNext:\n1. Review and edit if needed.\n2. Upload the PDF to DocuSeal, place the signature/date fields, and send it to the client.\n3. In the dashboard, set Contract → Sent.\nWhen DocuSeal emails you the signed copy, the dashboard marks it Signed and starts the payment plan automatically.\n\n— Emanant HQ", attachments=files)
+                                  f"Contract draft for {lead['client']} is attached (PDF to review, Word to edit).\n\nSign-by date: {pretty(sign_by)} (7 days, or the day before the event if that is sooner). Create the contract on the day you send it, so the 7 days count from sending.\n\nNext:\n1. Review and edit if needed.\n2. Upload the PDF to DocuSeal, place the signature/date fields, and send it to the client.\n3. In the dashboard, set Contract → Sent.\nWhen DocuSeal emails you the signed copy, the dashboard marks it Signed and starts the payment plan automatically.\n\n— Emanant HQ", attachments=files)
                         mailed = True
                     except Exception as ex:
                         mailed = str(ex)

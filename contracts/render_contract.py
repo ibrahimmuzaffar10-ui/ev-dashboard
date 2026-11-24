@@ -15,6 +15,20 @@ if FILL:  # substitute client values; in "lines" blocks mark them ⟪v⟫ so the
             return (f"⟪{v}⟫" if mark else v) if v else m.group(0)
         return re.sub(r"\{\{([^}]+)\}\}", rep, x)
     SECTIONS = [(h, tg, [(k, _sub(c, k == "lines"), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
+    # privacy: tick the chosen box on the "Selected:" line (no tier chosen = standard usage)
+    _pk = str(FILL.get("privacy_option") or "Standard usage").split("(")[0].strip().lower()
+    def _tick(x):
+        if isinstance(x, list): return [_tick(i) for i in x]
+        if "☐" not in x or "Selected" not in x: return x
+        return re.sub(r"☐ ([^☐]+)", lambda m: ("☒ " if m.group(1).strip().lower().startswith(_pk) else "☐ ") + m.group(1), x)
+    SECTIONS = [(h, tg, [(k, _tick(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
+    # representative pre-signs: cursive name in the signature cell + the issue date
+    SIGN = str(FILL.get("rep_name") or "").strip() if FILL.get("rep_presign") else ""
+    if SIGN:
+        def _sigrow(c):
+            if not (isinstance(c, list) and c and isinstance(c[0], list) and "signature" in str(c[0]).lower()): return c
+            return [[r[0], "⟨SIG⟩" + SIGN, str(FILL.get("issue_date") or "")] if len(r) == 3 and r[0] == SIGN and not r[1] else r for r in c]
+        SECTIONS = [(h, tg, [(k, _sigrow(c) if k == "tbl" else c, t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
 if CLEAN:  # client-facing view: no review page, no highlights, no notes, blanks instead of {{fields}}
     SECTIONS = [(h, "", [(k, c, "") for (k, c, t) in b if k != "q"]) for (h, tg, b) in SECTIONS]
     def _blank(x):
@@ -110,6 +124,9 @@ for head, tag, blocks in SECTIONS:
             for i, row in enumerate(content):
                 cells = tb.add_row().cells
                 for j, val in enumerate(row):
+                    if val.startswith("⟨SIG⟩"):
+                        rs = cells[j].paragraphs[0].add_run(val[5:]); rs.font.name = "Snell Roundhand"; rs.font.size = Pt(16); rs.font.color.rgb = RGBColor(0x1F, 0x2F, 0x6B)
+                        continue
                     cells[j].text = val
                     for pr in cells[j].paragraphs:
                         for rr in pr.runs:
@@ -162,7 +179,18 @@ class FillLine(Flowable):
         if x < self.W_TOTAL - 10 and not (last.endswith("}}") or last.endswith("___") or last.endswith("⟫")):
             c.line(x + 2, y - 2, self.W_TOTAL, y - 2)
 
-def esc(s): return s.replace("⟪", "").replace("⟫", "").replace("☐", "[  ]").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def esc(s): return s.replace("⟪", "").replace("⟫", "").replace("☐", "[  ]").replace("☒", "[X]").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+_SIGFONT = None
+def sig_para(name):
+    """Cursive signature (macOS Snell Roundhand); a plain italic name where that font is missing (e.g. Vercel)."""
+    global _SIGFONT
+    if _SIGFONT is None:
+        try:
+            from reportlab.pdfbase import pdfmetrics; from reportlab.pdfbase.ttfonts import TTFont
+            pdfmetrics.registerFont(TTFont("EVSig", "/System/Library/Fonts/Supplemental/SnellRoundhand.ttc", subfontIndex=0)); _SIGFONT = "EVSig"
+        except Exception:
+            _SIGFONT = "Times-Italic"
+    return Paragraph(f'<font name="{_SIGFONT}" size="15" color="#1F2F6B">{esc(name)}</font>', SM)
 def para(text, tag, style=BODY, bold_lead=False):
     t = esc(text)
     if bold_lead and ". " in t:
@@ -202,7 +230,7 @@ for head, tag, blocks in SECTIONS:
             flow += [lt, Spacer(1, 6)]
         elif kind == "tbl":
             cols = len(content[0])
-            data = [[para(c, "", SM) for c in row] for row in content]
+            data = [[sig_para(c[5:]) if c.startswith("⟨SIG⟩") else para(c, "", SM) for c in row] for row in content]
             widths = [2.2 * inch, 4.5 * inch] if cols == 2 else ([1.4 * inch, 4.4 * inch, 0.9 * inch] if content[0][0] == "Option" else [6.7 * inch / cols] * cols)
             tsty = [("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8d2c8")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]
