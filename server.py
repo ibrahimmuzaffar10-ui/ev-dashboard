@@ -109,6 +109,8 @@ def build_fill(terms):
     if not str(f.get("rep_name") or "").strip(): f["rep_name"] = os.environ.get("EV_REP_NAME", "")   # Eman's side comes pre-signed
     f["rep_presign"] = bool(str(f.get("rep_name") or "").strip())
     f["issue_date"] = pretty(terms["issue"]); f["sign_by_date"] = pretty(terms["sign_by"])
+    try: f["offer_days"] = (datetime.date.fromisoformat(terms["sign_by"]) - datetime.date.fromisoformat(terms["issue"])).days
+    except Exception: pass
     f["event_dates"] = " · ".join(f"{pretty(d['date'])}" + (f" ({d['event']})" if d.get("event") else "") for d in days)
     if days:
         f.setdefault("start_time", days[0].get("start", "")); f.setdefault("end_time", days[0].get("end", ""))

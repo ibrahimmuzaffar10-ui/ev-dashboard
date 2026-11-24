@@ -14,6 +14,13 @@ if FILL:  # substitute client values; in "lines" blocks mark them ⟪v⟫ so the
             v = str(FILL.get(m.group(1), "") or "").strip()
             return (f"⟪{v}⟫" if mark else v) if v else m.group(0)
         return re.sub(r"\{\{([^}]+)\}\}", rep, x)
+    # short-notice booking (sign-by sooner than 7 days): the offer runs until the sign-by date, not "seven (7) days"
+    if isinstance(FILL.get("offer_days"), int) and FILL["offer_days"] < 7:
+        def _short(x):
+            if isinstance(x, list): return [_short(i) for i in x]
+            return x.replace("valid for ⟦seven (7) days⟧ from the date it is sent, until the sign-by date shown above",
+                             "valid from the date it is sent until the sign-by date shown above (the day before the event)")
+        SECTIONS = [(h, tg, [(k, _short(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
     # deliverables written out in full ("125+ fully edited images · 1 roll of film") replace the "N+ edited images" pattern
     if re.search(r"[A-Za-z]", str(FILL.get("image_estimate") or "")):
         def _deliv(x):
