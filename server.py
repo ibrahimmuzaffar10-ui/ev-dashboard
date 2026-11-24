@@ -106,6 +106,7 @@ def sign_by_date(today_, event_dates):
 def build_fill(terms):
     f = dict(terms["fields"]); days = terms.get("days", []); plan = terms.get("plan", [])
     if not str(f.get("privacy_option") or "").strip(): f["privacy_option"] = "Standard usage"   # no tier picked = standard usage
+    f["privacy_option"] = re.sub(r"\s*\(\+?\$[^)]*\)", "", str(f["privacy_option"])).strip()   # the fee shows under Add-ons only
     if not str(f.get("rep_name") or "").strip(): f["rep_name"] = os.environ.get("EV_REP_NAME", "")   # Eman's side comes pre-signed
     f["rep_presign"] = bool(str(f.get("rep_name") or "").strip())
     f["issue_date"] = pretty(terms["issue"]); f["sign_by_date"] = pretty(terms["sign_by"])

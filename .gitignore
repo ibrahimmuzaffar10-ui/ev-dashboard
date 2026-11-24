@@ -45,6 +45,7 @@
 !scripts/check_leaks.py
 !scripts/test_local_guard.py
 !scripts/test_rollback_keys.py
+!scripts/send_contract.py
 !scripts/normalize_alert_times.py
 !scripts/outbox_admin.py
 !scripts/lead_admin.py
