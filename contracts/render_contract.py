@@ -19,7 +19,7 @@ if FILL:  # substitute client values; in "lines" blocks mark them ⟪v⟫ so the
         def _short(x):
             if isinstance(x, list): return [_short(i) for i in x]
             return x.replace("valid for ⟦seven (7) days⟧ from the date it is sent, until the sign-by date shown above",
-                             "valid from the date it is sent until the sign-by date shown above (the day before the event)")
+                             "valid from the date it is sent until the sign-by date shown above")
         SECTIONS = [(h, tg, [(k, _short(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
     # deliverables written out in full ("125+ fully edited images · 1 roll of film") replace the "N+ edited images" pattern
     if re.search(r"[A-Za-z]", str(FILL.get("image_estimate") or "")):
@@ -33,7 +33,9 @@ if FILL:  # substitute client values; in "lines" blocks mark them ⟪v⟫ so the
     def _tick(x):
         if isinstance(x, list): return [_tick(i) for i in x]
         if "☐" not in x or "Selected" not in x: return x
-        return re.sub(r"☐ ([^☐]+)", lambda m: ("☒ " if m.group(1).strip().lower().startswith(_pk) else "☐ ") + m.group(1), x)
+        out = re.sub(r"☐ ([^☐]+)", lambda m: ("☒ " if _pk and m.group(1).strip().lower().startswith(_pk) else "☐ ") + m.group(1), x)
+        if out.count("☒") != 1: raise SystemExit(f"privacy choice {_pk!r} matches {out.count('☒')} boxes on the Selected line")
+        return out
     SECTIONS = [(h, tg, [(k, _tick(c), t) for (k, c, t) in b]) for (h, tg, b) in SECTIONS]
     # representative pre-signs: cursive name in the signature cell + the issue date
     SIGN = str(FILL.get("rep_name") or "").strip() if FILL.get("rep_presign") else ""

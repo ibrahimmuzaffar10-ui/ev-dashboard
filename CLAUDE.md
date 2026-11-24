@@ -33,7 +33,8 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `docs/SECURITY.md`, `docs/RETENTION.md` | Breach checklist (lock down, rotate keys, investigate, client notice); data retention proposal (nothing automated) |
 | `scripts/testdb.py` | **Post-cutover tests run ONLY through this**: private local Postgres copy (TLS, same role) from the newest backup: `testdb.py run <cmd>` |
 | `scripts/restore_local.py`, `scripts/lead_admin.py` | Backup → old JSON without Supabase; safe one-lead show/delete |
-| `scripts/send_contract.py` | Email a client their DocuSeal link in the approved wording (outbox → Eman's Sent folder); marks Contract = sent. `--dry-run` previews |
+| `scripts/send_contract.py` | Email a client their DocuSeal link in the approved wording (outbox → Eman's Sent folder); marks Contract = sent; refuses repeats (`--resend`) and expired sign-by. `--dry-run` previews |
+| `scripts/test_contracts.py` | Contract + Zelle-matching checks (sign-by, plan, privacy, email, name match, over-total guard, one local render): expect **30/30** |
 | `web/` | Stage 3 Next.js 16 phone-first app (own Vercel project `emanant-hq-web`, address https://emanantvisuals-hq.vercel.app; read `web/AGENTS.md` first) |
 | `web/lib/bridge.ts`, `web/lib/facts.ts`, `web/app/files/[id]` | Phone app saves through the Python API with the user's own token (one copy of the rules); extraction of event details from client messages; contract files from the `files` table |
 | `push.py`, `requirements-mac.txt`, `web/public/sw.js` | Web push (Phase 16): the Mac sends (VAPID private key only in `.env.local`), the phone shows; Mac-only Python extras |
@@ -41,7 +42,7 @@ Emanant HQ is the lead/booking/payment dashboard for Emanant Visuals, a two-pers
 | `server.py` | Dashboard server (stdlib `ThreadingHTTPServer`; `load()`/`store()` on JSON; 6 GET + 13 POST routes) |
 | `dashboard_template.html`, `calendar.html` | UI (single page; `__BOOT__` and `__PRIVACY_OPTIONS__` placeholders filled by the server) |
 | `watch.py` | iCloud mail watcher (via `himalaya` CLI) → alerts; triggers `zelle_import.py` |
-| `zelle_import.py`, `brief.py`, `calendar_sync.py` | Zelle payment import, twice-daily brief, iCloud calendar sync (AppleScript) |
+| `zelle_import.py`, `brief.py`, `calendar_sync.py` | Zelle payment import (Inbox + Deleted Messages, every full watcher run; name match → credited to the booking's plan via the Mac server, over-total → To match), twice-daily brief, iCloud calendar sync (AppleScript) |
 | `contracts/render_contract.py`, `contracts/render_questionnaire.py` | DOCX/PDF renderers (python-docx + reportlab); contract wording is loaded from outside the repo |
 | `db.py` | Data layer: `EV_BACKEND=json` (default, files) or `supabase` (one transaction + advisory lock per save, as role `ev_server` via the pooler, verified TLS) |
 | `legacy.py` | Schema v2 ⇄ old JSON shape: one converter used by the import, the checker and the website (`legacy_shape` keeps absent keys / untypable originals) |

@@ -105,8 +105,7 @@ def sign_by_date(today_, event_dates):
     return sb.isoformat()
 def build_fill(terms):
     f = dict(terms["fields"]); days = terms.get("days", []); plan = terms.get("plan", [])
-    if not str(f.get("privacy_option") or "").strip(): f["privacy_option"] = "Standard usage"   # no tier picked = standard usage
-    f["privacy_option"] = re.sub(r"\s*\(\+?\$[^)]*\)", "", str(f["privacy_option"])).strip()   # the fee shows under Add-ons only
+    f["privacy_option"] = re.sub(r"\s*\(\+?\$[^)]*\)", "", str(f.get("privacy_option") or "")).strip() or "Standard usage"   # fee only under Add-ons; no tier = standard
     if not str(f.get("rep_name") or "").strip(): f["rep_name"] = os.environ.get("EV_REP_NAME", "")   # Eman's side comes pre-signed
     f["rep_presign"] = bool(str(f.get("rep_name") or "").strip())
     f["issue_date"] = pretty(terms["issue"]); f["sign_by_date"] = pretty(terms["sign_by"])
@@ -126,7 +125,7 @@ def build_fill(terms):
     return f
 def plan_from_terms(t, due_retainer=None):
     """The payment plan from a contract: deposit (retainer) + the installments, all unpaid. Created when the contract
-    is sent (scripts/send_contract.py), so a deposit that arrives before the signed copy is credited to it."""
+    is signed, or by zelle_import when a deposit arrives first (never at sending: unsigned is not money due)."""
     sched = [{"label": "Retainer (due at signing)", "due": due_retainer or today(), "amount": t.get("retainer"), "paid": False}] if t.get("retainer") else []
     sched += [{"label": p["label"], "due": p.get("due", ""), "amount": p.get("amount"), "paid": False} for p in t.get("plan", []) if p.get("amount")]
     return sched
@@ -141,7 +140,7 @@ def activate_signed(d, lead, pdf_bytes=None):
         if not lead.get("schedule"):
             lead["schedule"] = plan_from_terms(t)
         if lead.get("retainer") not in ("paid", "partial"): lead["retainer"] = "unpaid"
-        lead["balance"] = "due"
+        if lead.get("balance") not in ("partial", "paid_in_full"): lead["balance"] = "due"   # a deposit may already be in
         name = doc_name(t); t["signed_on"] = today()
         if pdf_bytes:
             os.makedirs(SIGNED, exist_ok=True); sp = os.path.join(SIGNED, name + ".pdf")
@@ -443,6 +442,9 @@ class H(BaseHTTPRequestHandler):
                     name = doc_name(terms); terms["name"] = name
                     files = render("contract", build_fill(terms), os.path.join(DRAFTS, name + " – Contract"))
                     terms["draft_files"] = docstore.register(files, "drafts")
+                    # a re-issued contract replaces the plan: keep paid lines, drop unpaid ones nothing was credited to
+                    if lead.get("schedule"):
+                        lead["schedule"] = [x for x in lead["schedule"] if x.get("paid") or x.get("payment_id")]
                     lead["contract_terms"] = terms; lead["total"] = terms["total"]; lead["contract"] = "not_sent"
                     if days: lead["event"] = days[0]["date"]
                     store(d, {"id": lead["id"], "client": lead["client"], "field": "contract_terms", "old": None, "new": name})

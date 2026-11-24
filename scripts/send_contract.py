@@ -2,10 +2,11 @@
 and keeps a copy in Eman's Sent folder). The wording is the approved standard (Ibrahim, 11/23): only the client's
 first name, event, date, deposit, link and sign-by date change.
 
-    .venv/bin/python scripts/send_contract.py L110 https://docuseal.com/s/XXXX [--dry-run]
+    .venv/bin/python scripts/send_contract.py L000 https://docuseal.com/s/XXXX [--dry-run] [--resend]
 
-Marks the lead's contract as "sent", keeps the link on the contract record and puts the payment plan on the books
-(deposit due by the sign-by date), so a matching Zelle is credited automatically. Run with EV_BACKEND=supabase.
+Marks the lead's contract as "sent" and keeps the link on the contract record. The payment plan goes on the books
+when the deposit arrives (zelle_import) or the contract is signed, never before (unsigned = not money due).
+Refuses to send twice (--resend to override) or after the sign-by date. Run with EV_BACKEND=supabase.
 """
 import argparse, datetime, os, sys, threading
 
@@ -30,9 +31,10 @@ def money(v):
 def contract_email(terms, link, this_year):
     """(to, subject, body) in the approved wording."""
     f = terms["fields"]
-    first = (f.get("first_names") or f.get("client_names") or "").strip().split(" ")[0] or "there"
-    event = (f.get("session_type") or "event").strip()
-    event = event[0].lower() + event[1:] if event and not event[:2].isupper() else event
+    words = [w for w in (f.get("first_names") or f.get("client_names") or "").replace("&", " ").split()
+             if w.rstrip(".").lower() not in ("dr", "mr", "mrs", "ms", "miss")]
+    first = words[0] if words else "there"
+    event = (f.get("session_type") or "event").strip().lower()
     when = nice_date(terms["days"][0]["date"], True, this_year)
     sign_by = nice_date(terms["sign_by"], False, this_year)
     deposit = money(terms["retainer"]) + " " if terms.get("retainer") else ""
@@ -51,6 +53,7 @@ def contract_email(terms, link, this_year):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("lead_id"); ap.add_argument("link"); ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--resend", action="store_true", help="send again although this contract was already sent")
     a = ap.parse_args()
     if not a.link.startswith("https://docuseal.com/s/"):
         sys.exit("link must be a DocuSeal signing link (https://docuseal.com/s/...)")
@@ -61,6 +64,15 @@ def main():
         if not lead or not lead.get("contract_terms"):
             sys.exit(f"{a.lead_id}: no lead with a contract")
         t = lead["contract_terms"]
+        if not t.get("days") or not t["days"][0].get("date"):
+            sys.exit(f"{a.lead_id}: the contract has no event date")
+        if str(t.get("sign_by") or "") < evtime.today_ct().isoformat():
+            sys.exit(f"{a.lead_id}: the sign-by date {t.get('sign_by')} has passed: re-issue the contract first")
+        if (t.get("sent_on") or t.get("docuseal_link")) and not a.resend:
+            sys.exit(f"{a.lead_id}: already sent on {t.get('sent_on')} ({t.get('docuseal_link')}); use --resend to send again")
+        other = next((l["id"] for l in d["leads"] if l is not lead and (l.get("contract_terms") or {}).get("docuseal_link") == a.link), None)
+        if other:
+            sys.exit(f"{a.lead_id}: that link belongs to {other}")
         to, subject, body = contract_email(t, a.link, evtime.today_ct().year)
         if "@" not in to:
             sys.exit(f"{a.lead_id}: the contract has no client email")
@@ -69,10 +81,6 @@ def main():
             return
         t["docuseal_link"] = a.link; t["sent_on"] = evtime.today_ct().isoformat()
         lead["contract"] = "sent"
-        if not lead.get("schedule"):         # payment plan goes on the books now, so an early deposit is credited to it
-            import server
-            lead["schedule"] = server.plan_from_terms(t, t["sign_by"])
-            if lead.get("retainer") not in ("paid", "partial"): lead["retainer"] = "unpaid"
         lead["action_note"] = f"{evtime.today_ct().isoformat()}: contract link emailed to the client; waiting for signature + deposit."
         db.outbox_enqueue(to, subject, body)       # joins this save's transaction: queued only if the save commits
         db.store(d)

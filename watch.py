@@ -300,7 +300,7 @@ def main():
             def score(l):
                 sc = 0
                 if l.get("src_email") and l["src_email"].lower() in hay: sc += 5
-                ce = (l["contract_terms"].get("fields") or {}).get("client_email", "").strip().lower()
+                ce = ((l["contract_terms"].get("fields") or {}).get("client_email") or "").strip().lower()
                 if ce and ce != (l.get("src_email") or "").lower() and ce in hay: sc += 5
                 toks = set(re.findall(r"[a-z]{3,}", (l["client"] + " " + l["contract_terms"]["fields"].get("client_names", "")).lower())) - {"and", "the", "via"}
                 sc += sum(1 for x in toks if x in hay)
@@ -404,6 +404,14 @@ def main():
             if (left == mark) or (mark == -1 and left < 0):
                 try: post("/api/alert-new", {"type": "reminder", "title": f"{l['client']}: {msg}", "detail": f"Sign-by date {t['sign_by']}. Contract sent but not signed.", "email_id": f"signby:{l['id']}:{mark}", "lead_id": l["id"]})
                 except Exception as ex: all_ok = False; print("reminder failed:", ex)
+    # Zelle import on every full run too (review H2, 11/24): Eman often deletes the Chase emails before this watcher
+    # sees them in the Inbox, and the importer also reads Deleted Messages
+    if not SHADOW and not QUICK:
+        try:
+            z = subprocess.run([sys.executable, os.path.join(HERE, "zelle_import.py")], capture_output=True, timeout=600)
+            if z.returncode != 0: all_ok = False; print("zelle import failed:", z.stderr.decode()[-300:])
+        except Exception as ex:
+            all_ok = False; print("zelle import skipped:", ex)
     # Eman's Sent folder: replying to a lead moves it from unanswered -> open (waiting on client) and records last contact
     try:
         sent = search_all("Sent Messages", since)
