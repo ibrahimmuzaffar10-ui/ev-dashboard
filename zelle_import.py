@@ -85,6 +85,7 @@ def apply_to_plan(email_id, lead_id):
 
 
 def main():
+    global failed_apply
     pays = db.payments_all()
     ids = db.doc_read("zelle_ids") or {}            # mailbox number -> Message-ID, for older payments
     seen = {p["email_id"] for p in pays} | set(ids.values())
