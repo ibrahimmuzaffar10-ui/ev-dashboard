@@ -111,3 +111,16 @@ def send(msg):
     except Exception:
         pass
     return msg["Message-ID"]
+
+
+def save_draft(msg):
+    """Put an email in Eman's Mail **Drafts** folder (nothing is sent): she opens it in Mail, checks it and taps Send."""
+    im = imaplib.IMAP4_SSL("imap.mail.me.com", timeout=30)
+    try:
+        im.login(evenv.need("EV_ICLOUD_LOGIN"), icloud_pw())
+        typ, _ = im.append('"Drafts"', "\\Draft", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+        if typ != "OK": raise NotSent(f"iCloud didn't save the draft ({typ})")
+    finally:
+        try: im.logout()
+        except Exception: pass
+    return msg["Message-ID"]

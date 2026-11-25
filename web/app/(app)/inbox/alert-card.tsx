@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { Facts } from "@/lib/facts";
 import { addAsLead, draftToEman, markDone, notALead, reopen, type Result } from "./actions";
@@ -40,16 +41,23 @@ export function AlertCard({ a }: { a: CardData }) {
 
   return (
     <article className="card p-4">
-      <div className="flex items-start gap-3">
-        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `var(--${a.tone})` }} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 className="truncate text-[16px] font-semibold">{a.who}</h3>
-            <span className="shrink-0 text-xs text-[var(--muted)]">{a.when}</span>
+      {(() => {
+        const head = (
+          <div className="flex items-start gap-3">
+            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `var(--${a.tone})` }} aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="truncate text-[16px] font-semibold">{a.who}</h3>
+                <span className="shrink-0 text-xs text-[var(--muted)]">{a.when}</span>
+              </div>
+              <div className="text-[13px] text-[var(--muted)]">{a.kind}{a.count > 1 ? ` · ${a.count} messages` : ""}{a.leadName ? ` · ${a.leadName}` : ""}</div>
+              {a.leadId && <div className="mt-0.5 text-[13px] font-medium text-[var(--accent)]">Open profile ›</div>}
+            </div>
           </div>
-          <div className="text-[13px] text-[var(--muted)]">{a.kind}{a.count > 1 ? ` · ${a.count} messages` : ""}{a.leadName ? ` · ${a.leadName}` : ""}</div>
-        </div>
-      </div>
+        );
+        // tap the name: the client's profile (contract, documents, payments); "‹ Inbox" there comes back here
+        return a.leadId ? <Link href={`/leads/${a.leadId}?from=inbox`} className="-m-1 block rounded-lg p-1 active:bg-[var(--line)]">{head}</Link> : head;
+      })()}
       {chips.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>}
       {f.excerpt && !showAll && <p className="mt-3 line-clamp-3 text-[14.5px] leading-snug">{f.excerpt}</p>}
       {a.isPerson && a.full && (

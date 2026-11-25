@@ -115,7 +115,10 @@ export async function loadContract(leadId: string): Promise<ContractPrefill> {
   return c ? { fields: (c.fields || {}) as Record<string, string>, total: c.total === null ? null : Number(c.total), retainer: c.retainer === null ? null : Number(c.retainer), issued: c.issued_on, signed: c.signed_on } : null;
 }
 
-export type Doc = { id: number; kind: string; name: string };
+export type Doc = { id: number; kind: string; name: string; pdf: boolean; current: boolean; label: string; note: string };
+const DOC_ORDER: Record<string, number> = { signed: 0, questionnaire: 1, draft: 2 };
+/** A client's files, clearly labelled (Ibrahim 11/25): the signed contract first and marked CURRENT (older signed copies
+ *  say so), then the questionnaire, then the unsigned drafts marked as copies. PDF before Word within each. */
 export async function loadDocs(leadId: string): Promise<Doc[]> {
   if (demo()) return [];
   await connection();
@@ -123,6 +126,24 @@ export async function loadDocs(leadId: string): Promise<Doc[]> {
   const c = await sb.from("contracts").select("contract_id").eq("lead_id", leadId);
   const ids = (c.data || []).map((x) => x.contract_id);
   if (!ids.length) return [];
-  const d = await sb.from("documents").select("document_id, kind, original_path, position").in("contract_id", ids).order("kind").order("position");
-  return (d.data || []).map((x) => ({ id: x.document_id, kind: x.kind, name: String(x.original_path || "").split("/").pop() || "file" }));
+  const d = await sb.from("documents").select("document_id, kind, original_path, position, created_at").in("contract_id", ids);
+  const rows = (d.data || []).map((x) => ({ id: x.document_id as number, kind: String(x.kind), name: String(x.original_path || "").split("/").pop() || "file", at: String(x.created_at || "") }));
+  const fmt = (iso: string) => iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" }) : "";
+  const hasSigned = rows.some((r) => r.kind === "signed");
+  // newest first within a kind: the newest signed PDF is the current contract
+  rows.sort((a, b) => (DOC_ORDER[a.kind] ?? 9) - (DOC_ORDER[b.kind] ?? 9) || b.at.localeCompare(a.at) || Number(b.name.toLowerCase().endsWith(".pdf")) - Number(a.name.toLowerCase().endsWith(".pdf")));
+  const seen: Record<string, number> = {};
+  return rows.map((r) => {
+    const pdf = r.name.toLowerCase().endsWith(".pdf");
+    const n = (seen[r.kind + (pdf ? "p" : "w")] = (seen[r.kind + (pdf ? "p" : "w")] || 0) + 1);
+    const how = pdf ? "PDF · opens here" : "Word · downloads (editable)";
+    const when = fmt(r.at);
+    if (r.kind === "signed") {
+      const current = n === 1;
+      return { id: r.id, kind: r.kind, name: r.name, pdf, current, label: current ? "✅ Signed contract · CURRENT" : `Signed contract · older copy (${n})`, note: `${how} · signed copy saved ${when}` };
+    }
+    if (r.kind === "questionnaire") return { id: r.id, kind: r.kind, name: r.name, pdf, current: false, label: "Client questionnaire" + (n > 1 ? ` · older copy (${n})` : ""), note: `${how} · made ${when}` };
+    if (r.kind === "draft") return { id: r.id, kind: r.kind, name: r.name, pdf, current: false, label: hasSigned ? "Contract draft · unsigned COPY (reference only)" : "Contract draft · sent, not signed yet" + (n > 1 ? ` · older copy (${n})` : ""), note: `${how} · made ${when}` };
+    return { id: r.id, kind: r.kind, name: r.name, pdf, current: false, label: r.kind, note: `${how} · ${when}` };
+  });
 }

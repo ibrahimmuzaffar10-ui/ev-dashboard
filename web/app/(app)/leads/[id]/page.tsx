@@ -12,8 +12,9 @@ import { CloseLead } from "./close";
 import { staleWhy } from "@/lib/stale";
 import { PlanEditor } from "./plan";
 
-async function Detail({ params }: { params: Promise<{ id: string }> }) {
+async function Detail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {
   const { id } = await params;
+  const fromInbox = (await searchParams)?.from === "inbox";
   const today = await todayCT();
   const [{ leads }, { inst, pays }, docs] = await Promise.all([loadLeads(), loadMoney(), loadDocs(id)]);
   const l = leads.find((x) => x.id === id);
@@ -24,7 +25,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   const stale = staleWhy(l, today);
   return (
     <>
-      <div className="pt-3"><Link href="/leads" className="text-sm font-medium text-[var(--accent)]">‹ Leads</Link></div>
+      <div className="pt-3"><Link href={fromInbox ? "/inbox" : "/leads"} className="text-sm font-medium text-[var(--accent)]">{fromInbox ? "‹ Inbox" : "‹ Leads"}</Link></div>
       <header className="mt-2">
         <h1 className="font-serif text-[26px] font-semibold leading-tight">{l.client}</h1>
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
@@ -97,9 +98,9 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
           <ul className="card divide-y divide-[var(--line)]">
             {docs.map((d) => (
               <li key={d.id}><a href={`/files/${d.id}`} target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3">
-                <span className="text-lg" aria-hidden>{d.name.toLowerCase().endsWith(".pdf") ? "📄" : "📝"}</span>
-                <span className="min-w-0 flex-1"><span className="block truncate text-[15px]">{d.kind === "signed" ? "Signed contract" : d.kind === "draft" ? "Contract draft" : d.kind === "questionnaire" ? "Questionnaire" : d.kind}</span>
-                  <span className="block truncate text-[12px] text-[var(--muted)]">{d.name.toLowerCase().endsWith(".pdf") ? "PDF · opens here" : "Word · downloads"}</span></span>
+                <span className="text-lg" aria-hidden>{d.label.startsWith("✅") ? "✅" : d.pdf ? "📄" : "📝"}</span>
+                <span className="min-w-0 flex-1"><span className={"block truncate text-[15px]" + (d.current ? " font-semibold" : "")}>{d.label.replace(/^✅ /, "")}</span>
+                  <span className="block truncate text-[12px] text-[var(--muted)]">{d.note}</span></span>
                 <span className="text-[var(--muted)]">›</span>
               </a></li>
             ))}
@@ -119,5 +120,5 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
 }
 
 export default function LeadPage(props: PageProps<"/leads/[id]">) {
-  return <Suspense fallback={<Skeleton />}><Detail params={props.params as Promise<{ id: string }>} /></Suspense>;
+  return <Suspense fallback={<Skeleton />}><Detail params={props.params as Promise<{ id: string }>} searchParams={props.searchParams as Promise<{ from?: string }>} /></Suspense>;
 }
